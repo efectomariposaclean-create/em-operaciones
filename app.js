@@ -389,12 +389,12 @@ function renderLogin(msg) {
   document.body.style.background = '#fff';
   let pin = '';
   ROOT.innerHTML = '<div class="login"><div class="brand"><img src="icons/logo-header.png" alt=""><h1>Efecto Mariposa</h1><p>Operaciones</p></div>' +
-    '<div class="pinbox"><p class="muted small" style="text-align:center">Introduce tu PIN personal</p><div class="pin-dots" id="dots"></div>' +
+    '<div class="pinbox"><p class="muted small" style="text-align:center">Introduce tu PIN personal (6 a 8 números)</p><div class="pin-dots" id="dots"></div>' +
     '<div class="keypad">' + [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => '<button data-k="' + n + '">' + n + '</button>').join('') +
     '<button class="k-del" data-k="del" aria-label="Borrar">' + icon('back') + '</button><button data-k="0">0</button><button class="k-ok" data-k="ok">Entrar</button></div>' +
     '<p class="msg" id="lmsg">' + esc(msg || '') + '</p></div></div>';
   const dots = $('#dots'), lmsg = $('#lmsg');
-  const draw = () => { const n = Math.max(6, pin.length); dots.innerHTML = Array.from({ length: n }, (_, i) => '<i class="' + (i < pin.length ? 'on' : '') + '"></i>').join(''); };
+  const draw = () => { const n = 8; dots.innerHTML = Array.from({ length: n }, (_, i) => '<i class="' + (i < pin.length ? 'on' : '') + '"></i>').join(''); };
   draw();
   async function submit() {
     if (pin.length < 6) { lmsg.textContent = 'El PIN tiene entre 6 y 8 números.'; return; }
