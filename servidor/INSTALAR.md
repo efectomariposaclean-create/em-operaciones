@@ -62,3 +62,22 @@ Las columnas nuevas se añaden solas a tu hoja la primera vez que alguien entra.
 3. Ve a **Implementar → Gestionar implementaciones**, pulsa el lápiz ✏️, elige **Nueva versión** y pulsa **Implementar**.
 
 La primera vez que alguien entre se crean solas las hojas del almacén con tu inventario cargado. Si el almacén aparece vacío, ejecuta la función `cargarInventarioInicial`.
+
+## Actualizar a la versión 3.0 (CRM, facturas, contabilidad y agenda) · actualización completa
+
+Incluye también el almacén de la 2.2, así que si no la instalaste, esta lo hace todo de una vez.
+
+1. En Apps Script, abre `Código.gs`, borra todo y pega el nuevo `servidor/Codigo.gs`. Guarda.
+2. Crea un archivo nuevo (**+** › **Secuencia de comandos**) llamado `Crm` y pega `servidor/Crm.gs`.
+3. Crea otro llamado `Inventario` y pega el archivo privado `Inventario.gs` que te pasa Claude por el chat (si ya lo tienes, déjalo).
+4. Crea otro llamado `DatosCrm` y pega el archivo privado `DatosCrm.gs` que te pasa Claude por el chat. Contiene tus clientes, facturas y contabilidad: no está en GitHub.
+5. En el desplegable de funciones elige **activarCrm** y pulsa **Ejecutar**. Acepta los permisos nuevos (Google Calendar y la hoja de solicitudes de la web). En el registro verás cuántos prospectos, facturas y movimientos se han cargado.
+6. **Implementar → Gestionar implementaciones** › lápiz ✏️ › **Nueva versión** › **Implementar**. La dirección `/exec` no cambia.
+
+Qué hace `activarCrm`:
+- Crea las hojas nuevas (Contactos, Facturas, Presupuestos, Contabilidad) sin tocar lo que ya existe.
+- Carga los datos del CRM anterior y casa los clientes con los que ya tenías (por nombre o NIF).
+- Conecta tu Google Calendar: los seguimientos con fecha aparecen solos en tu calendario.
+- Programa cada hora la entrada de las solicitudes de presupuesto de la web como prospectos nuevos.
+
+Si lo ejecutas dos veces no duplica nada.

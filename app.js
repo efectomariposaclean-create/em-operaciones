@@ -3,7 +3,7 @@
 'use strict';
 
 const CFG = window.EM_CONFIG || {};
-const VERSION = '2.2.0';
+const VERSION = '3.0.0';
 const ROOT = document.getElementById('root');
 
 /* ============================ Utilidades ============================ */
@@ -443,8 +443,8 @@ function renderLogin(msg) {
 }
 
 function logout(msg) {
-  S.token = ''; S.data = null; S.queue = [];
-  LS.del('token'); LS.del('snap');
+  S.token = ''; S.data = null; S.queue = []; S.crm = null; S.inv = null;
+  LS.del('token'); LS.del('snap'); LS.del('crm'); LS.del('inv');
   IDB.clear();
   renderLogin(typeof msg === 'string' ? msg : '');
 }
@@ -457,10 +457,10 @@ function shell() {
   const inc = isClient() ? D.incidents().filter(i => !i.resuelta).length : openIncidents().length;
   const tabs = isClient() ? TABS_CLIENT : isAdmin() ? TABS_ADMIN : [['inicio', 'home', 'Inicio'], ['servicios', 'rv', 'Servicios'], ['incidencias', 'alert', 'Incidencias'], ['jornada', 'clock', 'Jornada'], ['mas', 'grid', 'Más']];
   const active = name => {
-    const map = isClient() ? { servicio: 'inicio', historico: 'buscar' } : { servicio: 'servicios', nuevo: 'servicios', historico: 'buscar' };
+    const map = isClient() ? { servicio: 'inicio', historico: 'buscar' } : { servicio: 'servicios', nuevo: 'servicios', historico: 'buscar', contacto: 'comercial', ficha: 'clientes' };
     return (map[r.name] || r.name) === name;
   };
-  const activeTab = name => active(name) || (name === 'mas' && ['almacen', 'horario', 'buscar', 'albaranes', 'equipo', 'clientes', 'ajustes', 'sistema', 'historico'].indexOf(r.name) >= 0);
+  const activeTab = name => active(name) || (name === 'mas' && ['almacen', 'horario', 'buscar', 'albaranes', 'equipo', 'clientes', 'ajustes', 'sistema', 'historico', 'panel', 'comercial', 'contacto', 'ficha', 'facturas', 'contabilidad', 'agenda'].indexOf(r.name) >= 0);
   return '<div class="app">' +
     '<aside class="side"><div class="brand"><img src="icons/logo-header.png" alt=""><div><b>Efecto Mariposa</b><small>Operaciones</small></div></div>' +
     side.map(x => Array.isArray(x) ? '<a href="#/' + x[0] + '" class="' + (active(x[0]) ? 'on' : '') + '">' + icon(x[1]) + x[2] + ((x[0] === 'incidencias' || x[0] === 'avisos') && inc ? '<span class="badge">' + inc + '</span>' : '') + '</a>' : '<div class="grp">' + x + '</div>').join('') +
@@ -486,7 +486,7 @@ function render(fromSync) {
   const ae = document.activeElement;
   if (fromSync && ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName) && ae.closest('main') && lastRendered === location.hash) { updateStatus(); return; }
   if (fromSync && $('.scrim')) { updateStatus(); return; }
-  if (fromSync && ['nuevo', 'ajustes', 'cuenta', 'horario', 'albaranes', 'almacen', 'buscar', 'equipo', 'clientes', 'sistema', 'jornada'].indexOf(r.name) >= 0 && lastRendered === location.hash) { updateStatus(); return; }
+  if (fromSync && ['nuevo', 'ajustes', 'cuenta', 'horario', 'albaranes', 'almacen', 'buscar', 'equipo', 'clientes', 'sistema', 'jornada', 'panel', 'comercial', 'contacto', 'ficha', 'facturas', 'contabilidad', 'agenda'].indexOf(r.name) >= 0 && lastRendered === location.hash) { updateStatus(); return; }
   const y = lastRendered === location.hash ? window.scrollY : 0;
   ROOT.innerHTML = shell();
   const view = isClient() ? (CVIEWS[r.name] || CVIEWS.inicio) : (VIEWS[r.name] || VIEWS.inicio);
@@ -498,6 +498,7 @@ function render(fromSync) {
   tick();
   if (lastRendered === location.hash) window.scrollTo(0, y);
   lastRendered = location.hash;
+  animRv();
 }
 
 /* Acciones con data-act (delegación) */
@@ -550,6 +551,7 @@ VIEWS.inicio = function () {
   const html =
     '<div class="row between" style="margin:2px 2px 12px"><div><h1>' + greet() + ', ' + esc(m.nombre.split(' ')[0]) + '</h1><p class="muted small">' + new Date().toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'long' }) + '</p></div></div>' +
     install +
+    (isAdmin() ? crmStrip() : '') +
     '<div id="workChip"></div>' +
     (S.inv && S.inv.articulos.some(a => a.compraEstado || a.bajo) ? '<div class="banner warn" style="margin-top:10px">' + icon('box') + '<span class="grow">Almacén: ' + S.inv.articulos.filter(a => a.bajo).length + ' bajo mínimo · ' + S.inv.articulos.filter(a => a.compraEstado).length + ' en la lista de compra</span><button class="btn sm" data-act="go" data-to="almacen">Ver</button></div>' : '') +
     '<div class="kpis" style="margin-top:10px">' + kpis.map(k => '<button class="kpi ' + (k[2] === 'alert' && k[1] ? 'alert' : '') + '" data-act="go" data-to="' + k[3] + '"><small>' + icon(k[2], 's') + esc(k[0]) + '</small><b>' + k[1] + '</b></button>').join('') + '</div>' +
@@ -630,7 +632,7 @@ VIEWS.servicios = function (r) {
 };
 
 /* ---------- Nuevo servicio ---------- */
-const VEHICULOS = ['Autocaravana', 'Camper', 'Caravana', 'Furgoneta', 'Turismo', 'Otro'];
+const VEHICULOS = ['Autocaravana', 'Camper', 'Caravana', 'Coche', 'Furgoneta', 'Cabeza tractora', 'Camión', 'Autobús', 'Otro'];
 VIEWS.nuevo = function () {
   const clients = D.clients().filter(c => c.tipo === 'empresa' && c.activo !== false);
   const canPart = isAdmin() || (me().acceso || []).indexOf('PARTICULARES') >= 0;
@@ -1449,11 +1451,12 @@ function editClient(c) {
 
 /* ---------- Ajustes ---------- */
 VIEWS.ajustes = function () {
-  const html = '<div class="card"><h2>Cambiar mi PIN</h2><p class="small muted" style="margin-top:4px">De 6 a 8 números. Evita fechas o números seguidos.</p><div class="two"><div><label class="f">Nuevo PIN</label><input class="in" id="p1" type="password" inputmode="numeric" maxlength="8"></div><div><label class="f">Repítelo</label><input class="in" id="p2" type="password" inputmode="numeric" maxlength="8"></div></div><button class="btn wide" style="margin-top:12px" id="pgo">' + icon('key') + 'Cambiar PIN</button></div>' +
+  const html = (isClient() ? '' : '<div class="card row" style="gap:10px"><div class="grow"><h2>Mis datos</h2><p class="small muted" style="margin-top:4px">' + esc(me().nombre) + (me().email ? ' · ' + esc(me().email) : ' · sin correo') + (me().telefono ? ' · ' + esc(me().telefono) : '') + '</p></div><button class="btn sm ghost" id="myd">' + icon('edit', 's') + 'Editar</button></div>') + '<div class="card"><h2>Cambiar mi PIN</h2><p class="small muted" style="margin-top:4px">De 6 a 8 números. Evita fechas o números seguidos.</p><div class="two"><div><label class="f">Nuevo PIN</label><input class="in" id="p1" type="password" inputmode="numeric" maxlength="8"></div><div><label class="f">Repítelo</label><input class="in" id="p2" type="password" inputmode="numeric" maxlength="8"></div></div><button class="btn wide" style="margin-top:12px" id="pgo">' + icon('key') + 'Cambiar PIN</button></div>' +
     '<div class="card"><h2>Instalar la app</h2><p class="small muted" style="margin-top:4px">' + (isStandalone() ? 'Ya la estás usando como app instalada.' : (/iphone|ipad|ipod/i.test(navigator.userAgent) ? 'En iPhone: abre esta página en Safari, pulsa Compartir y después «Añadir a pantalla de inicio».' : 'En Android: abre el menú del navegador y pulsa «Instalar aplicación» o «Añadir a pantalla de inicio».')) + '</p>' + (S.installEvt ? '<button class="btn wide" style="margin-top:10px" id="ins">' + icon('phone') + 'Instalar ahora</button>' : '') + '</div>' +
     '<div class="card"><h2>Datos en este dispositivo</h2><p class="small muted" style="margin-top:4px">' + (S.queue.length ? S.queue.length + ' cambios pendientes de enviar.' : 'Todo está enviado al servidor.') + ' Última actualización: ' + (S.lastSync ? fRel(S.lastSync) : '—') + '.</p><button class="btn ghost wide" style="margin-top:10px" data-act="sync">' + icon('refresh') + 'Actualizar ahora</button></div>' +
     '<button class="btn danger wide" style="margin-top:12px" data-act="logout">' + icon('logout') + 'Cerrar sesión</button>';
   return { title: 'Ajustes', back: true, html: html, mount: () => {
+    const md = $('#myd'); if (md) md.onclick = profileSheet;
     $('#pgo').onclick = async () => {
       const a = $('#p1').value, b = $('#p2').value;
       if (a !== b || !/^\d{6,8}$/.test(a)) return toast('Escribe el mismo PIN (6 a 8 números) dos veces.', true);
@@ -1793,7 +1796,7 @@ function clientDetailHtml(ctx) {
   const order = ['Antes', 'Después', 'Exterior', 'Interior', 'Detalle', 'Incidencia'];
   const groups = order.map(k => [k, photos.filter(f => f.tipo === k)]).filter(g => g[1].length);
   const hero = '<div class="hero"><div class="row between"><div class="grow"><div class="plate">' + esc(s.matricula || s.chasis) + '</div><div class="meta">' + esc([s.vehiculo, s.marca, s.modelo].filter(Boolean).join(' · ')) + (s.tipo ? ' · ' + esc(s.tipo) : '') + '</div></div><span class="chip">' + esc(s.etapa === 'Listo' ? 'Listo para entrega' : s.etapa) + '</span></div>' +
-    '<div class="client-steps">' + stepper(s, true) + '</div>' +
+    rvStepper(s) +
     '<p class="meta" style="margin-top:10px">' + icon('shield', 's') + ' Protocolo de calidad: ' + s.progreso[0] + ' de ' + s.progreso[1] + ' controles completados</p></div>';
   const gal = '<div class="card"><div class="row between" style="margin-bottom:6px"><h2>Fotos</h2><span class="small muted">' + photos.length + '</span></div>' +
     (groups.length ? groups.map(g => '<p class="small muted" style="margin:10px 0 6px;font-weight:600">' + esc(g[0]) + '</p><div class="photos">' + g[1].map(f => photoTile(f, ctx.year)).join('') + '</div>').join('') : '<p class="muted small">' + (s.cerrado ? 'No hay fotos compartidas.' : 'Las fotos aparecerán aquí a medida que el equipo las suba.') + '</p>') + '</div>';
@@ -1806,6 +1809,7 @@ function clientDetailHtml(ctx) {
   return hero + '<div class="detail" style="margin-top:12px"><div class="col">' + gal + incs + '</div><div class="col">' + rec + info + '</div></div>';
 }
 function mountClientDetail(el, ctx) {
+  animRv();
   loadThumbs(el);
   el.addEventListener('click', e => { const ph = e.target.closest('[data-photo]'); if (ph) viewPhoto(ph.dataset.photo, ph.dataset.year, ctx); });
 }
@@ -1876,6 +1880,587 @@ async function renderPublic(token) {
     }
   };
   await load(true);
+}
+
+/* ============================ CRM y administración (dirección) ============================ */
+
+S.crm = LS.get('crm', null);
+let crmLoading = null;
+async function loadCrm(force) {
+  if (!isAdmin()) return;
+  if (crmLoading) return crmLoading;
+  if (S.crm && !force && Date.now() - (S.crmAt || 0) < 20000) return;
+  crmLoading = (async () => {
+    try {
+      S.crm = await api('crmSync', {}, 60000); S.crmAt = Date.now(); LS.set('crm', S.crm);
+      const ae = document.activeElement;
+      if (CRM_VIEWS.indexOf(route().name) >= 0 && !$('.scrim') && !(ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName))) render();
+    } catch (e) { if (!e.auth && !S.crm) toast(e.net ? 'Sin conexión.' : e.message, true); }
+    finally { crmLoading = null; }
+  })();
+  return crmLoading;
+}
+const CRM_VIEWS = ['panel', 'comercial', 'contacto', 'clientes', 'ficha', 'facturas', 'contabilidad', 'agenda'];
+SIDE_ADMIN.splice(SIDE_ADMIN.indexOf('Dirección'), 0, 'Empresa', ['panel', 'chart', 'Panel'], ['comercial', 'target', 'Comercial'], ['clientes', 'building', 'Clientes'], ['facturas', 'euro', 'Facturas'], ['contabilidad', 'calc', 'Contabilidad'], ['agenda', 'calendar', 'Agenda']);
+for (let i = SIDE_ADMIN.length - 1; i >= 0; i--) if (Array.isArray(SIDE_ADMIN[i]) && SIDE_ADMIN[i][0] === 'clientes' && i > SIDE_ADMIN.indexOf('Dirección')) SIDE_ADMIN.splice(i, 1);
+Object.assign(ICONS, {
+  chart: '<path d="M4 19h16M7 16V10M12 16V5M17 16v-4"/>',
+  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  euro: '<path d="M17 6.5A7 7 0 1 0 17 17.5"/><path d="M4 10h9M4 14h9"/>',
+  calc: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15v3M8 18h4"/>',
+  whatsapp: '<path d="M3 21l1.65-3.8A9 9 0 1 1 8.5 20.2z"/><path d="M9 10a.5.5 0 0 0 1 0V9a.5.5 0 0 0-1 0v1a5 5 0 0 0 5 5h1a.5.5 0 0 0 0-1h-1a.5.5 0 0 0 0 1"/>'
+});
+ROLE_NAMES.admin = 'Dirección / socio';
+
+const C = {
+  hoy: () => madridDay(),
+  eur: n => (Number(n) || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €',
+  eur0: n => Math.round(Number(n) || 0).toLocaleString('es-ES') + ' €',
+  num: v => Number(String(v == null ? '' : v).replace(',', '.')) || 0,
+  d: v => v ? String(v).slice(0, 10).split('-').reverse().join('/') : '—',
+  dShort: v => { if (!v) return ''; const d = new Date(String(v).slice(0, 10) + 'T12:00:00Z'); return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', timeZone: 'UTC' }).replace('.', ''); },
+  days: v => v ? Math.round((Date.parse(String(v).slice(0, 10) + 'T12:00:00Z') - Date.parse(madridDay() + 'T12:00:00Z')) / 864e5) : null,
+  client: id => ((S.crm && S.crm.clientes) || []).find(c => c.id === id),
+  contact: id => ((S.crm && S.crm.contactos) || []).find(c => c.id === id),
+  facturas: () => ((S.crm && S.crm.facturas) || []).filter(f => f.estado !== 'Anulada'),
+  pagado: f => (f.cobros || []).reduce((n, c) => n + C.num(c.importe), 0),
+  pendiente: f => f.estado === 'Anulada' ? 0 : Math.max(0, C.num(f.total) - C.pagado(f)),
+  q: day => Math.floor((Number(String(day).slice(5, 7)) - 1) / 3) + 1,
+  activos: () => ((S.crm && S.crm.contactos) || []).filter(c => !c.cliente && ['Ganado', 'Perdido', 'Archivado'].indexOf(c.fase) < 0)
+};
+function whenChip(day) {
+  if (!day) return '<span class="chip">Sin fecha</span>';
+  const n = C.days(day);
+  if (n < 0) return '<span class="chip bad">Vencido ' + (-n) + ' d</span>';
+  if (n === 0) return '<span class="chip warn">Hoy</span>';
+  if (n === 1) return '<span class="chip info">Mañana</span>';
+  return '<span class="chip info">' + esc(C.dShort(day)) + '</span>';
+}
+function faseChip(f) { return '<span class="chip ' + ({ Nuevo: 'info', Contactado: '', 'Presupuesto enviado': 'warn', Negociando: 'warn', Ganado: 'ok', Perdido: 'bad', Archivado: '' }[f] || '') + '">' + esc(f) + '</span>'; }
+function ritmoChip(c) { return '<span class="chip ' + ({ 'Se enfría': 'bad', Preguntar: 'warn', Normal: 'ok' }[c.estado] || '') + '">' + esc(c.estado || '—') + '</span>'; }
+function factChip(f) { return '<span class="chip ' + ({ Cobrada: 'ok', Parcial: 'warn', Pendiente: 'warn', Anulada: 'bad' }[f.estado] || '') + '">' + esc(f.estado) + '</span>'; }
+function crmWait(title) { loadCrm(); return { title: title, back: false, html: '<div class="card empty">' + icon('refresh') + '<p>Cargando…</p></div>' }; }
+function rowLink(to, main, sub, right) { return '<a class="li row-l" href="#/' + to + '"><div class="grow" style="min-width:0"><b class="ellipsis" style="display:block">' + main + '</b><div class="small muted ellipsis">' + sub + '</div></div>' + (right || '') + '</a>'; }
+function telLinks(tel, email) {
+  const t = String(tel || '').replace(/[^\d+]/g, ''), w = t.replace(/^\+/, '').replace(/^(?!34)(\d{9})$/, '34$1');
+  return '<div class="row" style="gap:6px;flex-wrap:wrap">' + (t ? '<a class="btn sm ghost" href="tel:' + esc(t) + '">' + icon('phone', 's') + 'Llamar</a><a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/' + esc(w) + '">' + icon('whatsapp', 's') + 'WhatsApp</a>' : '') + (email ? '<a class="btn sm ghost" href="mailto:' + esc(String(email).split(/[\s,;]+/)[0]) + '">' + icon('mail', 's') + 'Correo</a>' : '') + '</div>';
+}
+function timeline(notas) {
+  const l = (notas || []).slice().reverse();
+  if (!l.length) return '<p class="small muted">Sin notas todavía.</p>';
+  return '<div class="tl">' + l.slice(0, 30).map(n => '<div class="tl-i"><div class="small muted">' + esc(n.canal || 'Nota') + ' · ' + esc(fDate(n.at, true)) + ' · ' + esc(n.by || '') + '</div><p style="white-space:pre-wrap">' + esc(n.texto) + '</p></div>').join('') + '</div>' + (l.length > 30 ? '<p class="tiny muted">' + (l.length - 30) + ' notas anteriores</p>' : '');
+}
+function noteSheet(title, cb, withNext, next) {
+  const canales = (S.crm && S.crm.canales) || ['Llamada', 'WhatsApp', 'Correo', 'Visita', 'Reunión', 'Nota'];
+  let canal = 'Llamada';
+  sheet(title, '<div class="chips" id="nc">' + canales.map(c => '<button type="button" data-c="' + esc(c) + '" class="' + (c === canal ? 'on' : '') + '">' + esc(c) + '</button>').join('') + '</div>' +
+    '<label class="f">Qué ha pasado</label><textarea class="in" id="nt" placeholder="Hablé con Luis, quiere presupuesto para 3 campers"></textarea>' +
+    (withNext ? '<label class="f">Próxima acción</label><input class="in" id="na" value="' + esc(next && next.proxAccion || '') + '" placeholder="Llamar para cerrar fecha"><div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">' + [['Mañana', 1], ['3 días', 3], ['1 semana', 7], ['2 semanas', 14]].map(x => '<button type="button" class="btn sm soft" data-dd="' + x[1] + '">' + x[0] + '</button>').join('') + '<input type="date" class="in" id="nd" style="flex:1;min-width:140px" value="' + esc(next && next.proxFecha || '') + '"></div>' : '') +
+    '<div class="actions"><button class="btn ghost" data-x2>Cancelar</button><button class="btn" id="nsv">Guardar</button></div>', (el, close) => {
+    $$('[data-c]', el).forEach(b => b.onclick = () => { canal = b.dataset.c; $$('[data-c]', el).forEach(x => x.classList.toggle('on', x === b)); });
+    $$('[data-dd]', el).forEach(b => b.onclick = () => { $('#nd', el).value = shiftDay(madridDay(), Number(b.dataset.dd)); });
+    $('[data-x2]', el).onclick = close;
+    $('#nsv', el).onclick = async () => {
+      const texto = $('#nt', el).value.trim();
+      if (!texto) return toast('Escribe qué ha pasado.', true);
+      const body = { texto: texto, canal: canal };
+      if (withNext) { body.proxAccion = $('#na', el).value; body.proxFecha = $('#nd', el).value; }
+      if (await command(() => cb(body), 'Guardado')) { close(); await loadCrm(true); render(); }
+    };
+  });
+}
+
+/* ---------- Panel ---------- */
+VIEWS.panel = function () {
+  if (!isAdmin()) return VIEWS.inicio();
+  if (!S.crm) return crmWait('Panel');
+  loadCrm();
+  const hoy = C.hoy(), mes = hoy.slice(0, 7), ano = hoy.slice(0, 4), o = S.crm.objetivos || {};
+  const fs = C.facturas();
+  const facMes = fs.filter(f => String(f.fecha).slice(0, 7) === mes).reduce((n, f) => n + C.num(f.imponible), 0);
+  const facAno = fs.filter(f => String(f.fecha).slice(0, 4) === ano).reduce((n, f) => n + C.num(f.imponible), 0);
+  const pend = fs.reduce((n, f) => n + C.pendiente(f), 0), nPend = fs.filter(f => C.pendiente(f) > 0.01).length;
+  const q = quarterCalc(Number(ano), C.q(hoy));
+  const seg = C.activos().filter(c => !c.revisar && c.proxFecha && c.proxFecha <= shiftDay(hoy, 2)).sort((a, b) => a.proxFecha.localeCompare(b.proxFecha));
+  const segCl = S.crm.clientes.filter(c => c.crm && c.crm.proxFecha && c.crm.proxFecha <= shiftDay(hoy, 2));
+  const vigilar = S.crm.clientes.filter(c => c.activo && (c.estado === 'Se enfría' || c.estado === 'Preguntar')).sort((a, b) => (b.dias || 0) / (b.ritmo || 1) - (a.dias || 0) / (a.ritmo || 1));
+  const revisar = S.crm.contactos.filter(c => c.revisar && !c.cliente && ['Perdido', 'Archivado'].indexOf(c.fase) < 0).length;
+  const quotes = (S.crm.presupuestos || []).filter(p => p.estado === 'Enviado');
+  const bar = (v, t) => t ? '<div class="progress" style="margin-top:6px"><i style="width:' + Math.min(100, Math.round(100 * v / t)) + '%"></i></div><small class="tiny muted">' + Math.round(100 * v / t) + ' % de ' + C.eur0(t) + '</small>' : '';
+  const kpi = (lbl, val, extra, to, cls) => '<button class="kpi ' + (cls || '') + '" data-act="go" data-to="' + to + '"><small>' + esc(lbl) + '</small><b>' + val + '</b>' + (extra || '') + '</button>';
+  const html =
+    '<div class="kpis k4">' + kpi('Facturado ' + new Date().toLocaleDateString('es-ES', { month: 'long', timeZone: 'Europe/Madrid' }), C.eur0(facMes), bar(facMes, o.mensual), 'facturas') + kpi('Facturado ' + ano, C.eur0(facAno), bar(facAno, o.anual), 'facturas') +
+    kpi('Por cobrar', C.eur0(pend), '<small class="tiny muted">' + nPend + ' facturas</small>', 'facturas', pend > 0 ? 'alert' : '') + kpi('Beneficio T' + C.q(hoy) + ' (estimado)', C.eur0(q.beneficio), '<small class="tiny muted">IVA a pagar ' + C.eur0(q.iva303) + '</small>', 'contabilidad') + '</div>' +
+    (revisar ? '<div class="banner warn" style="margin-top:10px">' + icon('target') + '<span class="grow"><b>Revisión de la semana:</b> ' + revisar + ' prospectos por revisar. Vamos con unos 20 al día.</span><button class="btn sm" data-act="go" data-to="comercial/revisar">Revisar</button></div>' : '') +
+    (!me().email ? '<div class="banner" style="margin-top:10px">' + icon('user') + '<span class="grow">Completa tu correo y teléfono para recibir avisos.</span><button class="btn sm" id="prof">Completar</button></div>' : '') +
+    '<div class="grid2" style="margin-top:12px">' +
+    '<div class="card"><div class="row between"><h2>' + icon('target', 's') + ' Seguimientos</h2><a class="link small" href="#/comercial">Ver todo</a></div><div class="list">' +
+    (seg.length + segCl.length ? segCl.map(c => rowLink('ficha/' + c.id, esc(c.nombre), 'Cliente · ' + esc(c.crm.proxAccion || 'Seguimiento'), whenChip(c.crm.proxFecha))).join('') + seg.slice(0, 8).map(c => rowLink('contacto/' + c.id, esc(c.nombre), esc(c.proxAccion || c.fase), whenChip(c.proxFecha))).join('') + (seg.length > 8 ? '<p class="tiny muted" style="padding-top:6px">y ' + (seg.length - 8) + ' más</p>' : '') : '<p class="small muted" style="padding:8px 0">Nada pendiente para hoy.</p>') + '</div></div>' +
+    '<div class="card"><div class="row between"><h2>' + icon('users', 's') + ' Clientes a vigilar</h2><a class="link small" href="#/clientes">Clientes</a></div><div class="list">' +
+    (vigilar.length ? vigilar.slice(0, 6).map(c => rowLink('ficha/' + c.id, esc(c.nombre), 'Suele: cada ' + c.ritmo + ' días · último: hace ' + c.dias + ' días', ritmoChip(c))).join('') : '<p class="small muted" style="padding:8px 0">Todos los clientes van a su ritmo.</p>') + '</div></div>' +
+    '<div class="card"><div class="row between"><h2>' + icon('file', 's') + ' Presupuestos abiertos</h2><span class="small muted">' + quotes.length + '</span></div><div class="list">' +
+    (quotes.length ? quotes.slice(0, 6).map(p => rowLink(p.cliente ? 'ficha/' + p.cliente : 'contacto/' + p.contacto, esc(p.datos && p.datos.nombre), esc(p.numero) + ' · ' + C.d(p.fecha), '<b class="small">' + C.eur0(p.total) + '</b>')).join('') : '<p class="small muted" style="padding:8px 0">No hay presupuestos pendientes de respuesta.</p>') + '</div></div>' +
+    '<div class="card"><div class="row between"><h2>' + icon('euro', 's') + ' Pendiente de cobro</h2><a class="link small" href="#/facturas">Facturas</a></div><div class="list">' +
+    (nPend ? fs.filter(f => C.pendiente(f) > 0.01).slice(0, 6).map(f => '<div class="li" data-fac="' + esc(f.id) + '" style="cursor:pointer"><div class="grow"><b>' + esc(f.numero) + ' · ' + esc(f.datos && f.datos.nombre) + '</b><div class="small muted">' + C.d(f.fecha) + '</div></div><b class="small">' + C.eur(C.pendiente(f)) + '</b></div>').join('') : '<p class="small muted" style="padding:8px 0">Todo cobrado.</p>') + '</div></div>' +
+    '</div>';
+  return { title: 'Panel', html: html, mount: el => {
+    $$('[data-fac]', el).forEach(r => r.onclick = () => invoiceSheet(S.crm.facturas.find(f => f.id === r.dataset.fac)));
+    const pb = $('#prof', el); if (pb) pb.onclick = profileSheet;
+  } };
+};
+
+/* ---------- Comercial (prospectos) ---------- */
+VIEWS.comercial = function (r) {
+  if (!isAdmin()) return VIEWS.inicio();
+  if (!S.crm) return crmWait('Comercial');
+  loadCrm();
+  const tab = r.id || S.ui.comTab || 'seguimiento'; S.ui.comTab = tab;
+  const q = norm(S.ui.comQ || '');
+  const all = S.crm.contactos.filter(c => !c.cliente);
+  const act = C.activos();
+  const rev = act.filter(c => c.revisar);
+  let list;
+  if (tab === 'revisar') list = rev.sort((a, b) => (a.prioridad || 'Z').localeCompare(b.prioridad || 'Z'));
+  else if (tab === 'todos') list = act.slice().sort((a, b) => String(b.actualizado).localeCompare(String(a.actualizado)));
+  else if (tab === 'cerrados') list = all.filter(c => ['Perdido', 'Archivado'].indexOf(c.fase) >= 0);
+  else list = act.filter(c => c.proxFecha && !c.revisar).sort((a, b) => a.proxFecha.localeCompare(b.proxFecha));
+  if (q) list = (tab === 'cerrados' ? list : all).filter(c => norm(c.nombre + c.telefono + c.email + c.ubicacion + c.vehiculo).indexOf(q) >= 0);
+  const fases = ['Nuevo', 'Contactado', 'Presupuesto enviado', 'Negociando'];
+  const html =
+    '<div class="kpis k4">' + fases.map(f => '<div class="kpi" style="cursor:default"><small>' + esc(f) + '</small><b>' + act.filter(c => c.fase === f).length + '</b></div>').join('') + '</div>' +
+    '<div class="row" style="gap:8px;margin-top:12px"><div class="search grow"><input class="in" id="cq" placeholder="Buscar prospecto" value="' + esc(S.ui.comQ || '') + '"></div><button class="btn green" id="cnew">' + icon('plus') + '<span class="hide-s">Prospecto</span></button></div>' +
+    '<div class="seg" style="margin:10px 0">' + [['seguimiento', 'Seguimiento'], ['revisar', 'Por revisar (' + rev.length + ')'], ['todos', 'Activos'], ['cerrados', 'Cerrados']].map(t => '<button data-ct="' + t[0] + '" class="' + (tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div>' +
+    (tab === 'revisar' && rev.length ? '<p class="small muted" style="margin:0 2px 8px">Abre cada uno, mira si se le escribió o llamó y decide: seguimiento con fecha, o archivar. Así limpiamos la lista esta semana.</p>' : '') +
+    '<div class="card list" style="padding:2px 14px">' + (list.length ? list.slice(0, 150).map(c => rowLink('contacto/' + c.id, esc(c.nombre) + (c.prioridad === 'A' ? ' <span class="chip info" style="margin-left:4px">A</span>' : ''), [c.fase, c.vehiculo, c.ubicacion].filter(Boolean).map(esc).join(' · ') + (c.proxAccion ? ' · ' + esc(c.proxAccion) : ''), tab === 'seguimiento' ? whenChip(c.proxFecha) : faseChip(c.fase))).join('') : '<p class="small muted" style="padding:12px 0">' + (tab === 'seguimiento' ? 'No hay seguimientos con fecha.' : 'Nada por aquí.') + '</p>') + '</div>';
+  return { title: 'Comercial', html: html, mount: el => {
+    $$('[data-ct]', el).forEach(b => b.onclick = () => { S.ui.comTab = b.dataset.ct; go('comercial/' + b.dataset.ct); });
+    const qi = $('#cq', el); qi.oninput = () => { S.ui.comQ = qi.value; clearTimeout(qi._t); qi._t = setTimeout(() => { render(); const n = $('#cq'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
+    $('#cnew', el).onclick = () => contactSheet(null);
+  } };
+};
+function contactSheet(c) {
+  const st = c || { nombre: '', tipo: 'Empresa', contacto: '', telefono: '', email: '', vehiculo: '', ubicacion: '', prioridad: 'B', origen: 'Manual' };
+  sheet(c ? 'Editar prospecto' : 'Nuevo prospecto', '<label class="f" style="margin-top:0">Nombre o empresa</label><input class="in" id="pn" value="' + esc(st.nombre) + '">' +
+    '<div class="two"><div><label class="f">Tipo</label><select class="in" id="pt"><option ' + (st.tipo === 'Empresa' ? 'selected' : '') + '>Empresa</option><option ' + (st.tipo === 'Particular' ? 'selected' : '') + '>Particular</option></select></div><div><label class="f">Prioridad</label><select class="in" id="pp">' + ['A', 'B', 'C'].map(x => '<option ' + (st.prioridad === x ? 'selected' : '') + '>' + x + '</option>').join('') + '</select></div></div>' +
+    '<div class="two"><div><label class="f">Persona de contacto</label><input class="in" id="pc" value="' + esc(st.contacto) + '"></div><div><label class="f">Teléfono</label><input class="in" id="ptel" inputmode="tel" value="' + esc(st.telefono) + '"></div></div>' +
+    '<label class="f">Correo</label><input class="in" id="pe" type="email" value="' + esc(st.email) + '">' +
+    '<div class="two"><div><label class="f">Vehículos</label><input class="in" id="pv" value="' + esc(st.vehiculo) + '" placeholder="Flota de campers"></div><div><label class="f">Zona</label><input class="in" id="pz" value="' + esc(st.ubicacion) + '"></div></div>' +
+    '<label class="f">Origen</label><input class="in" id="po" value="' + esc(st.origen) + '" placeholder="Web, recomendación, feria…">' +
+    (c ? '' : '<label class="f">Primera acción</label><input class="in" id="pa" placeholder="Llamar para presentarnos"><label class="f">Fecha</label><input type="date" class="in" id="pd" value="' + shiftDay(madridDay(), 1) + '">') +
+    '<div class="actions"><button class="btn" id="psv">Guardar</button></div>', (el, close) => {
+    $('#psv', el).onclick = async () => {
+      const body = { id: c ? c.id : '', nombre: $('#pn', el).value, tipo: $('#pt', el).value, prioridad: $('#pp', el).value, contacto: $('#pc', el).value, telefono: $('#ptel', el).value, email: $('#pe', el).value, vehiculo: $('#pv', el).value, ubicacion: $('#pz', el).value, origen: $('#po', el).value };
+      if (!c) { body.proxAccion = $('#pa', el).value; body.proxFecha = $('#pd', el).value; body.fase = 'Nuevo'; }
+      if (!body.nombre.trim()) return toast('Indica el nombre.', true);
+      let r;
+      if (await command(async () => { r = await api('contactSave', body); }, 'Guardado')) { close(); await loadCrm(true); go('contacto/' + r.id); }
+    };
+  });
+}
+VIEWS.contacto = function (r) {
+  if (!isAdmin()) return VIEWS.inicio();
+  if (!S.crm) return crmWait('Prospecto');
+  const c = C.contact(r.id);
+  if (!c) return { title: 'Prospecto', back: true, html: empty('target', 'No encontrado', 'Puede que se haya convertido en cliente.') };
+  if (c.cliente) { setTimeout(() => go('ficha/' + c.cliente)); return { title: 'Cliente', back: true, html: '' }; }
+  const quotes = (S.crm.presupuestos || []).filter(p => p.contacto === c.id);
+  const html =
+    '<div class="card"><div class="row between" style="align-items:flex-start"><div class="grow"><h1 style="font-size:18px">' + esc(c.nombre) + '</h1><p class="small muted">' + [c.tipo, c.contacto, c.vehiculo, c.ubicacion, c.origen && 'Origen: ' + c.origen].filter(Boolean).map(esc).join(' · ') + '</p></div><button class="iconbtn" id="ced" aria-label="Editar">' + icon('edit') + '</button></div>' +
+    '<div style="margin-top:10px">' + telLinks(c.telefono, c.email) + '</div>' +
+    '<label class="f">Fase</label><div class="chips" id="cf">' + S.crm.fases.filter(f => f !== 'Ganado').map(f => '<button type="button" data-f="' + esc(f) + '" class="' + (c.fase === f ? 'on' : '') + '">' + esc(f) + '</button>').join('') + '</div></div>' +
+    '<div class="card"><div class="row between"><h2>Próxima acción</h2>' + whenChip(c.proxFecha) + '</div><p style="margin-top:6px">' + esc(c.proxAccion || 'Sin definir') + '</p>' +
+    '<div class="row" style="gap:8px;margin-top:10px"><button class="btn sm green grow" id="cnote">' + icon('plus', 's') + 'Registrar contacto</button>' + (c.revisar ? '<button class="btn sm ghost" id="crev">' + icon('check', 's') + 'Revisado</button>' : '') + '</div></div>' +
+    '<div class="card"><div class="row between"><h2>Presupuestos</h2><button class="btn sm ghost" id="cq">' + icon('plus', 's') + 'Nuevo</button></div><div class="list">' + (quotes.length ? quotes.map(quoteRow).join('') : '<p class="small muted" style="padding:6px 0">Aún no hay presupuestos.</p>') + '</div></div>' +
+    '<div class="card"><h2>Historial</h2><div style="margin-top:8px">' + timeline(c.notas) + '</div></div>' +
+    '<div class="row" style="gap:8px;margin-top:12px"><button class="btn green grow" id="cconv">' + icon('check') + 'Convertir en cliente</button><button class="btn danger" id="carch">' + icon('archive') + 'Archivar</button></div>' +
+    '<p class="tiny muted" style="margin-top:8px">Conviértelo en cliente cuando acepte o haga su primer servicio. A partir de ahí aparecerá en Operaciones para registrar vehículos.</p>';
+  return { title: 'Prospecto', back: true, html: html, mount: el => {
+    $('#ced', el).onclick = () => contactSheet(c);
+    $$('[data-f]', el).forEach(b => b.onclick = () => command(async () => { await api('contactSave', { id: c.id, fase: b.dataset.f }); await loadCrm(true); render(); }, 'Fase actualizada'));
+    $('#cnote', el).onclick = () => noteSheet('Registrar contacto', body => api('contactNote', Object.assign({ id: c.id }, body)), true, c);
+    const rv = $('#crev', el); if (rv) rv.onclick = () => command(async () => { await api('contactSave', { id: c.id, revisar: false }); await loadCrm(true); render(); }, 'Marcado como revisado');
+    $('#cq', el).onclick = () => quoteSheet(null, { contacto: c.id, nombre: c.nombre });
+    bindQuotes(el);
+    $('#cconv', el).onclick = async () => { if (!(await confirmSheet('Convertir en cliente', c.nombre + ' pasará a Clientes y podrás registrar sus vehículos en Operaciones.', 'Convertir'))) return; let r; if (await command(async () => { r = await api('contactConvert', { id: c.id }); await sync(true); await loadCrm(true); }, 'Ya es cliente')) go('ficha/' + r.cliente); };
+    $('#carch', el).onclick = async () => { const why = await promptSheet('Archivar', 'Motivo (opcional)', { chips: ['No interesa', 'Sin respuesta', 'Fuera de zona', 'Duplicado'], ok: 'Archivar' }); if (why === null) return; if (await command(async () => { await api('contactSave', { id: c.id, fase: 'Archivado', revisar: false, nota: 'Archivado' + (why ? ': ' + why : ''), proxFecha: '' }); await loadCrm(true); }, 'Archivado')) go('comercial'); };
+  } };
+};
+
+/* ---------- Presupuestos ---------- */
+function quoteRow(p) {
+  return '<div class="li"><div class="grow" style="min-width:0"><b>' + esc(p.numero) + ' · ' + C.eur(p.total) + '</b><div class="small muted">' + C.d(p.fecha) + ' · ' + esc((p.lineas || []).map(l => l.concepto).join(', ')).slice(0, 90) + '</div></div>' +
+    '<select class="in sm-sel" data-qs="' + esc(p.id) + '">' + ['Enviado', 'Aceptado', 'Rechazado'].map(x => '<option ' + (p.estado === x ? 'selected' : '') + '>' + x + '</option>').join('') + '</select>' +
+    (p.archivo ? '<button class="iconbtn" data-qd="' + esc(p.id) + '" aria-label="Descargar">' + icon('download') + '</button>' : '') + '<button class="iconbtn" data-qe="' + esc(p.id) + '" aria-label="Editar">' + icon('edit') + '</button></div>';
+}
+function bindQuotes(el) {
+  $$('[data-qs]', el).forEach(s => s.onchange = () => command(async () => { await api('quoteState', { id: s.dataset.qs, estado: s.value }); await loadCrm(true); render(); }, 'Actualizado'));
+  $$('[data-qd]', el).forEach(b => b.onclick = () => docDownload('presupuesto', b.dataset.qd));
+  $$('[data-qe]', el).forEach(b => b.onclick = () => { const p = S.crm.presupuestos.find(x => x.id === b.dataset.qe); quoteSheet(p, { contacto: p.contacto, cliente: p.cliente, nombre: p.datos && p.datos.nombre }); });
+}
+function docDownload(tipo, id) { return command(async () => { const v = await api('docFile', { tipo: tipo, id: id }, 90000); download(v.name, new Blob([Uint8Array.from(atob(v.data), c => c.charCodeAt(0))], { type: 'application/pdf' })); }, 'Descargado'); }
+function linesEditor(lines, opts) {
+  opts = opts || {};
+  return '<div id="lns">' + lines.map((l, i) => '<div class="lnr" data-i="' + i + '">' + (opts.fecha ? '<input type="date" class="in" data-k="fecha" value="' + esc(l.fecha || '') + '">' : '') + '<input class="in" data-k="ref" placeholder="' + (opts.fecha ? 'Matrícula' : 'Detalle') + '" value="' + esc(l.ref || '') + '"><input class="in grow2" data-k="concepto" placeholder="Concepto" value="' + esc(l.concepto || '') + '"><input class="in num" data-k="cantidad" inputmode="decimal" value="' + esc(l.cantidad || 1) + '"><input class="in num" data-k="precio" inputmode="decimal" placeholder="Precio" value="' + esc(l.precio === '' || l.precio == null ? '' : String(l.precio).replace('.', ',')) + '"><button type="button" class="iconbtn" data-del="' + i + '" aria-label="Quitar">' + icon('x', 's') + '</button></div>').join('') + '</div><button type="button" class="btn sm soft" id="ladd" style="margin-top:6px">' + icon('plus', 's') + 'Añadir línea</button>';
+}
+function readLines(el, lines) {
+  $$('.lnr', el).forEach(r => { const l = lines[Number(r.dataset.i)]; $$('[data-k]', r).forEach(i => { l[i.dataset.k] = i.dataset.k === 'precio' || i.dataset.k === 'cantidad' ? (i.value.trim() === '' ? '' : C.num(i.value)) : i.value; }); });
+  return lines;
+}
+function quoteSheet(p, who) {
+  const st = p ? JSON.parse(JSON.stringify(p)) : { lineas: [{ concepto: '', cantidad: 1, precio: '' }], ivaPct: 21, validez: 30, notas: '' };
+  const draw = () => sheet((p ? 'Editar ' : 'Nuevo ') + 'presupuesto · ' + (who.nombre || ''), '<p class="small muted" style="margin-bottom:6px">Precios sin IVA. El PDF lleva tu logo y marca de agua y se guarda en su carpeta de Drive.</p>' + linesEditor(st.lineas) +
+    '<div class="two"><div><label class="f">IVA %</label><input class="in" id="qi" inputmode="decimal" value="' + esc(st.ivaPct) + '"></div><div><label class="f">Validez (días)</label><input class="in" id="qv" inputmode="numeric" value="' + esc(st.validez) + '"></div></div>' +
+    '<label class="f">Notas y condiciones</label><textarea class="in" id="qn" placeholder="Desplazamiento incluido…">' + esc(st.notas || '') + '</textarea><div class="tot-l" id="qt"></div>' +
+    '<div class="actions"><button class="btn" id="qsv">' + icon('file') + (p ? 'Guardar y rehacer PDF' : 'Crear presupuesto') + '</button></div>', (el, close) => {
+    const upd = () => { readLines(el, st.lineas); const b = st.lineas.reduce((n, l) => n + C.num(l.cantidad || 1) * C.num(l.precio), 0), iv = b * C.num($('#qi', el).value) / 100; $('#qt', el).innerHTML = 'Base <b>' + C.eur(b) + '</b> · IVA ' + C.eur(iv) + ' · Total <b>' + C.eur(b + iv) + '</b>'; };
+    el.oninput = upd; upd();
+    $('#ladd', el).onclick = () => { readLines(el, st.lineas); st.lineas.push({ concepto: '', cantidad: 1, precio: '' }); close(); draw(); };
+    $$('[data-del]', el).forEach(b => b.onclick = () => { readLines(el, st.lineas); st.lineas.splice(Number(b.dataset.del), 1); if (!st.lineas.length) st.lineas.push({ concepto: '', cantidad: 1, precio: '' }); close(); draw(); });
+    $('#qsv', el).onclick = async () => {
+      readLines(el, st.lineas);
+      const body = { id: p ? p.id : '', contacto: who.contacto || '', cliente: who.cliente || '', lineas: st.lineas.filter(l => l.concepto), ivaPct: $('#qi', el).value, validez: $('#qv', el).value, notas: $('#qn', el).value };
+      if (!body.lineas.length) return toast('Añade al menos un concepto.', true);
+      if (await command(async () => { await api('quoteSave', body, 90000); await loadCrm(true); }, 'Presupuesto guardado en Drive')) { close(); render(); }
+    };
+  });
+  draw();
+}
+
+/* ---------- Clientes (ficha completa) ---------- */
+VIEWS.clientes = function () {
+  if (!isAdmin()) return VIEWS.inicio();
+  if (!S.crm) return crmWait('Clientes');
+  loadCrm();
+  const q = norm(S.ui.clQ || ''), ano = C.hoy().slice(0, 4);
+  const fs = C.facturas();
+  const cs = S.crm.clientes.filter(c => c.activo && (!q || norm(c.nombre + c.telefono + c.nif).indexOf(q) >= 0))
+    .map(c => Object.assign({}, c, { fac: fs.filter(f => f.cliente === c.id && String(f.fecha).slice(0, 4) === ano).reduce((n, f) => n + C.num(f.imponible), 0), pend: fs.filter(f => f.cliente === c.id).reduce((n, f) => n + C.pendiente(f), 0) }))
+    .sort((a, b) => b.fac - a.fac || a.nombre.localeCompare(b.nombre, 'es'));
+  const html = '<div class="row" style="gap:8px"><div class="search grow"><input class="in" id="clq" placeholder="Buscar cliente" value="' + esc(S.ui.clQ || '') + '"></div><button class="btn green" id="clnew">' + icon('plus') + '<span class="hide-s">Cliente</span></button></div>' +
+    '<div class="card list" style="padding:2px 14px;margin-top:10px">' + cs.map(c => rowLink('ficha/' + c.id, esc(c.nombre), (c.ultimo ? 'Último servicio ' + C.dShort(c.ultimo) + ' · cada ' + c.ritmo + ' d' : 'Sin servicios en la app') + ' · ' + C.eur0(c.fac) + ' en ' + ano + (c.pend > 0.01 ? ' · <span style="color:var(--warn)">pendiente ' + C.eur0(c.pend) + '</span>' : ''), ritmoChip(c))).join('') + '</div>' +
+    '<p class="tiny muted" style="margin-top:8px">Un cliente es quien ya ha hecho algún servicio. Los que aún no, están en Comercial. El ritmo se calcula solo con sus servicios, y puedes fijarlo a mano en su ficha.</p>';
+  return { title: 'Clientes', html: html, mount: el => {
+    const qi = $('#clq', el); qi.oninput = () => { S.ui.clQ = qi.value; clearTimeout(qi._t); qi._t = setTimeout(() => { render(); const n = $('#clq'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
+    $('#clnew', el).onclick = () => editClient(null);
+  } };
+};
+VIEWS.ficha = function (r) {
+  if (!isAdmin()) return VIEWS.inicio();
+  if (!S.crm) return crmWait('Cliente');
+  const c = C.client(r.id);
+  if (!c) { loadCrm(true); return { title: 'Cliente', back: true, html: empty('building', 'Cargando cliente…', '') }; }
+  const ano = C.hoy().slice(0, 4), fs = S.crm.facturas.filter(f => f.cliente === c.id).sort((a, b) => String(b.numero).localeCompare(String(a.numero)));
+  const facAno = fs.filter(f => f.estado !== 'Anulada' && String(f.fecha).slice(0, 4) === ano).reduce((n, f) => n + C.num(f.imponible), 0);
+  const pend = fs.reduce((n, f) => n + C.pendiente(f), 0);
+  const crm = c.crm || {};
+  const quotes = (S.crm.presupuestos || []).filter(p => p.cliente === c.id);
+  const op = D.clients().find(x => x.id === c.id);
+  const html =
+    '<div class="card"><div class="row between" style="align-items:flex-start"><div class="grow"><h1 style="font-size:18px">' + esc(c.nombre) + '</h1><p class="small muted">' + [c.tipo === 'empresa' ? 'Empresa' : 'Particular', c.nif && 'NIF ' + c.nif, c.direccion].filter(Boolean).map(esc).join(' · ') + '</p></div>' + ritmoChip(c) + '</div>' +
+    '<div style="margin-top:10px">' + telLinks(c.telefono, c.email) + '</div></div>' +
+    '<div class="kpis k4" style="margin-top:10px"><div class="kpi"><small>Facturado ' + ano + '</small><b>' + C.eur0(facAno) + '</b></div><div class="kpi ' + (pend > 0.01 ? 'alert' : '') + '"><small>Pendiente</small><b>' + C.eur0(pend) + '</b></div><div class="kpi"><small>Servicios 90 días</small><b>' + (c.n90 || 0) + '</b></div><div class="kpi"><small>Ritmo</small><b>' + (c.ritmo ? 'cada ' + c.ritmo + ' d' : '—') + '</b><small class="tiny muted">' + (c.dias != null ? 'último hace ' + c.dias + ' d' : 'sin servicios') + '</small></div></div>' +
+    '<div class="card" style="margin-top:10px"><div class="row between"><h2>Seguimiento</h2>' + (crm.proxFecha ? whenChip(crm.proxFecha) : '') + '</div><p style="margin-top:6px">' + esc(crm.proxAccion || (c.estado === 'Se enfría' ? 'Lleva más tiempo del habitual sin servicios: conviene preguntar qué tal.' : 'Sin acción pendiente')) + '</p>' +
+    '<button class="btn sm green" id="fnote" style="margin-top:10px">' + icon('plus', 's') + 'Registrar contacto</button></div>' +
+    '<div class="card"><div class="row between"><h2>Facturas</h2><button class="btn sm ghost" id="finv">' + icon('plus', 's') + 'Crear factura</button></div><div class="list">' + (fs.length ? fs.slice(0, 12).map(facRow).join('') : '<p class="small muted" style="padding:6px 0">Sin facturas.</p>') + '</div></div>' +
+    '<div class="card"><div class="row between"><h2>Presupuestos</h2><button class="btn sm ghost" id="fq">' + icon('plus', 's') + 'Nuevo</button></div><div class="list">' + (quotes.length ? quotes.map(quoteRow).join('') : '<p class="small muted" style="padding:6px 0">Sin presupuestos.</p>') + '</div></div>' +
+    '<div class="card"><h2>Historial</h2><div style="margin-top:8px">' + timeline(crm.notas) + '</div></div>' +
+    '<div class="row" style="gap:8px;margin-top:12px"><button class="btn ghost grow" id="fdat">' + icon('edit') + 'Datos fiscales y tarifas</button>' + (op ? '<button class="btn ghost grow" id="fop">' + icon('sliders') + 'Ajustes de operación</button>' : '') + '</div>';
+  return { title: 'Cliente', back: true, html: html, mount: el => {
+    $('#fnote', el).onclick = () => noteSheet('Registrar contacto', body => api('clientCrm', { id: c.id, nota: body.texto, canal: body.canal, proxAccion: body.proxAccion, proxFecha: body.proxFecha }), true, crm);
+    $('#finv', el).onclick = () => invoiceEditor(null, c.id);
+    $('#fq', el).onclick = () => quoteSheet(null, { cliente: c.id, nombre: c.nombre });
+    bindQuotes(el); bindInvRows(el);
+    $('#fdat', el).onclick = () => clientDataSheet(c);
+    const fo = $('#fop', el); if (fo) fo.onclick = () => editClient(op);
+  } };
+};
+function clientDataSheet(c) {
+  const tipos = (D.clients().find(x => x.id === c.id) || {}).tipos || S.data.config.tiposGeneral || [];
+  sheet('Datos de ' + c.nombre, '<div class="two"><div><label class="f" style="margin-top:0">NIF / CIF</label><input class="in" id="dn" value="' + esc(c.nif) + '"></div><div><label class="f" style="margin-top:0">Ritmo habitual (días)</label><input class="in" id="dr" inputmode="numeric" placeholder="Automático: ' + esc(c.ritmoAuto || '—') + '" value="' + esc(c.ritmoManual ? c.ritmo : '') + '"></div></div>' +
+    '<label class="f">Dirección fiscal</label><input class="in" id="dd" value="' + esc(c.direccion) + '">' +
+    '<label class="f">Tarifa por tipo de servicio (sin IVA)</label><p class="tiny muted">Se usa para rellenar las facturas automáticamente.</p>' +
+    tipos.map(t => '<div class="row" style="gap:8px;margin-top:6px"><span class="grow small">' + esc(t) + '</span><input class="in num" data-tf="' + esc(t) + '" inputmode="decimal" style="max-width:110px" value="' + esc(c.tarifa && c.tarifa[t] ? String(c.tarifa[t]).replace('.', ',') : '') + '"></div>').join('') +
+    '<div class="actions"><button class="btn" id="dsv">Guardar</button></div>', (el, close) => {
+    $('#dsv', el).onclick = async () => {
+      const tarifa = {}; $$('[data-tf]', el).forEach(i => { if (i.value.trim()) tarifa[i.dataset.tf] = C.num(i.value); });
+      if (await command(async () => { await api('clientCrm', { id: c.id, nif: $('#dn', el).value, direccion: $('#dd', el).value, ritmo: $('#dr', el).value, tarifa: tarifa }); await loadCrm(true); }, 'Guardado')) { close(); render(); }
+    };
+  });
+}
+
+/* ---------- Facturas ---------- */
+function facRow(f) {
+  return '<div class="li" data-fac="' + esc(f.id) + '" style="cursor:pointer"><div class="grow" style="min-width:0"><b>' + esc(f.numero) + '</b> <span class="small muted">· ' + C.d(f.fecha) + '</span><div class="small muted ellipsis">' + esc(f.datos && f.datos.nombre) + '</div></div><div style="text-align:right"><b class="small">' + C.eur(f.total) + '</b><div>' + factChip(f) + '</div></div></div>';
+}
+function bindInvRows(el) { $$('[data-fac]', el).forEach(r => r.onclick = () => invoiceSheet(S.crm.facturas.find(f => f.id === r.dataset.fac))); }
+VIEWS.facturas = function () {
+  if (!isAdmin()) return VIEWS.inicio();
+  if (!S.crm) return crmWait('Facturas');
+  loadCrm();
+  const tab = S.ui.facTab || 'todas', ano = S.ui.facAno || C.hoy().slice(0, 4);
+  const all = S.crm.facturas.filter(f => String(f.fecha).slice(0, 4) === ano).sort((a, b) => String(b.numero).localeCompare(String(a.numero)));
+  const list = tab === 'pend' ? all.filter(f => C.pendiente(f) > 0.01) : all;
+  const ok = all.filter(f => f.estado !== 'Anulada');
+  const base = ok.reduce((n, f) => n + C.num(f.imponible), 0), pend = ok.reduce((n, f) => n + C.pendiente(f), 0);
+  const years = Array.from(new Set(S.crm.facturas.map(f => String(f.fecha).slice(0, 4)).concat([C.hoy().slice(0, 4)]))).sort().reverse();
+  const html = '<div class="kpis k4"><div class="kpi"><small>Facturas ' + ano + '</small><b>' + ok.length + '</b></div><div class="kpi"><small>Base imponible</small><b>' + C.eur0(base) + '</b></div><div class="kpi"><small>Total con IVA</small><b>' + C.eur0(ok.reduce((n, f) => n + C.num(f.total), 0)) + '</b></div><div class="kpi ' + (pend > 0.01 ? 'alert' : '') + '"><small>Por cobrar</small><b>' + C.eur0(pend) + '</b></div></div>' +
+    '<div class="row" style="gap:8px;margin-top:12px"><div class="seg grow">' + [['todas', 'Todas'], ['pend', 'Por cobrar']].map(t => '<button data-ft="' + t[0] + '" class="' + (tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div><select class="in" id="fy" style="width:auto">' + years.map(y => '<option ' + (y === ano ? 'selected' : '') + '>' + y + '</option>').join('') + '</select><button class="btn green" id="fnew">' + icon('plus') + '<span class="hide-s">Factura</span></button></div>' +
+    '<div class="card list" style="padding:2px 14px;margin-top:10px">' + (list.length ? list.map(facRow).join('') : '<p class="small muted" style="padding:12px 0">No hay facturas.</p>') + '</div>' +
+    '<p class="tiny muted" style="margin-top:8px">La numeración es correlativa y la pone la app: siguiente número <b>' + esc(nextInvNumber()) + '</b>. Cada PDF se guarda en tu carpeta de Facturas y en la del cliente.</p>';
+  return { title: 'Facturas', html: html, mount: el => {
+    $$('[data-ft]', el).forEach(b => b.onclick = () => { S.ui.facTab = b.dataset.ft; render(); });
+    $('#fy', el).onchange = e => { S.ui.facAno = e.target.value; render(); };
+    $('#fnew', el).onclick = () => invoiceEditor(null, '');
+    bindInvRows(el);
+  } };
+};
+function nextInvNumber() {
+  const y = C.hoy().slice(0, 4); let max = 0;
+  S.crm.facturas.forEach(f => { const m = String(f.numero).match(/^(\d{4})-(\d+)$/); if (m && m[1] === y) max = Math.max(max, Number(m[2])); });
+  return y + '-' + String(max + 1).padStart(3, '0');
+}
+function invoiceSheet(f) {
+  if (!f) return;
+  const paid = C.pagado(f);
+  sheet('Factura ' + f.numero, '<div class="row between"><div><b>' + esc(f.datos && f.datos.nombre) + '</b><div class="small muted">' + C.d(f.fecha) + (f.datos && f.datos.nif ? ' · ' + esc(f.datos.nif) : '') + '</div></div>' + factChip(f) + '</div>' +
+    '<table class="t" style="margin-top:10px">' + (f.lineas || []).slice(0, 40).map(l => '<tr><td>' + esc(l.ref || '') + '<div class="tiny muted">' + esc(l.concepto) + '</div></td><td style="text-align:right;white-space:nowrap">' + C.eur(C.num(l.cantidad || 1) * C.num(l.precio)) + '</td></tr>').join('') + '</table>' +
+    '<dl class="kv" style="margin-top:10px"><dt>Base</dt><dd>' + C.eur(f.imponible) + '</dd><dt>IVA ' + esc(f.ivaPct) + ' %</dt><dd>' + C.eur(f.iva) + '</dd>' + (C.num(f.retPct) ? '<dt>Retención</dt><dd>-' + C.eur(f.ret) + '</dd>' : '') + '<dt>Total</dt><dd><b>' + C.eur(f.total) + '</b></dd><dt>Cobrado</dt><dd>' + C.eur(paid) + (f.cobros || []).map(c => '<div class="tiny muted">' + C.d(c.fecha) + ' · ' + esc(c.metodo || '') + ' · ' + C.eur(c.importe) + '</div>').join('') + '</dd></dl>' +
+    (f.notas ? '<p class="small muted" style="margin-top:8px">' + esc(f.notas) + '</p>' : '') +
+    '<div class="actions" style="flex-wrap:wrap">' + (f.archivo ? '<button class="btn ghost" id="idl">' + icon('download') + 'PDF</button>' : '') + (f.estado !== 'Anulada' && C.pendiente(f) > 0.01 ? '<button class="btn green" id="ipay">' + icon('check') + 'Registrar cobro</button>' : '') + (f.origen === 'App' && f.estado !== 'Anulada' ? '<button class="btn ghost" id="ied">' + icon('edit') + 'Corregir</button><button class="btn danger" id="ian">Anular</button>' : '') + (paid > 0 && f.estado !== 'Anulada' ? '<button class="btn ghost" id="iund">Deshacer cobros</button>' : '') + '</div>', (el, close) => {
+    const b = id => $(id, el);
+    if (b('#idl')) b('#idl').onclick = () => docDownload('factura', f.id);
+    if (b('#ipay')) b('#ipay').onclick = () => { close(); paySheet(f); };
+    if (b('#ied')) b('#ied').onclick = () => { close(); invoiceEditor(f, f.cliente); };
+    if (b('#ian')) b('#ian').onclick = async () => { const m = await promptSheet('Anular factura ' + f.numero, 'Motivo', { ok: 'Anular' }); if (m === null) return; if (await command(async () => { await api('invoicePay', { id: f.id, anular: true, motivo: m }); await loadCrm(true); }, 'Factura anulada')) { close(); render(); } };
+    if (b('#iund')) b('#iund').onclick = async () => { if (await command(async () => { await api('invoicePay', { id: f.id, deshacer: true }); await loadCrm(true); }, 'Cobros quitados')) { close(); render(); } };
+  });
+}
+function paySheet(f) {
+  sheet('Cobro · ' + f.numero, '<div class="two"><div><label class="f" style="margin-top:0">Importe</label><input class="in" id="pi" inputmode="decimal" value="' + String(C.pendiente(f).toFixed(2)).replace('.', ',') + '"></div><div><label class="f" style="margin-top:0">Fecha</label><input type="date" class="in" id="pf" value="' + madridDay() + '"></div></div>' +
+    '<label class="f">Forma de pago</label><div class="chips" id="pm">' + ['Transferencia', 'Bizum', 'Efectivo', 'Tarjeta'].map((m, i) => '<button type="button" data-m="' + m + '" class="' + (i ? '' : 'on') + '">' + m + '</button>').join('') + '</div>' +
+    '<div class="actions"><button class="btn green" id="psv">Registrar cobro</button></div>', (el, close) => {
+    let m = 'Transferencia';
+    $$('[data-m]', el).forEach(b => b.onclick = () => { m = b.dataset.m; $$('[data-m]', el).forEach(x => x.classList.toggle('on', x === b)); });
+    $('#psv', el).onclick = async () => { if (await command(async () => { await api('invoicePay', { id: f.id, importe: C.num($('#pi', el).value), fecha: $('#pf', el).value, metodo: m }); await loadCrm(true); }, 'Cobro registrado')) { close(); render(); } };
+  });
+}
+function invoiceEditor(f, clientId) {
+  const cl = S.crm.clientes.filter(c => c.activo).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  const hoy = madridDay();
+  const st = f ? JSON.parse(JSON.stringify(f)) : { cliente: clientId || (cl[0] || {}).id, fecha: hoy, lineas: [{ fecha: hoy, ref: '', concepto: '', cantidad: 1, precio: '' }], ivaPct: 21, retPct: 0, vence: '', notas: '', from: shiftDay(hoy, -6), to: hoy };
+  const draw = () => sheet(f ? 'Corregir factura ' + f.numero : 'Nueva factura · ' + nextInvNumber(), (f ? '<div class="banner warn" style="margin-bottom:10px">' + icon('alert') + '<span>Úsalo solo para corregir errores antes de enviarla. El número no cambia y el PDF se rehace.</span></div>' : '') +
+    '<div class="two"><div><label class="f" style="margin-top:0">Cliente</label><select class="in" id="ic" ' + (f ? 'disabled' : '') + '>' + cl.map(c => '<option value="' + esc(c.id) + '" ' + (c.id === st.cliente ? 'selected' : '') + '>' + esc(c.nombre) + '</option>').join('') + '</select></div><div><label class="f" style="margin-top:0">Fecha de emisión</label><input type="date" class="in" id="ifd" value="' + esc(st.fecha) + '" ' + (f ? 'disabled' : '') + '></div></div>' +
+    (f ? '' : '<div class="card soft" style="margin-top:10px;padding:10px"><b class="small">Rellenar con servicios entregados</b><div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap"><input type="date" class="in" id="ifr" value="' + esc(st.from) + '" style="flex:1;min-width:130px"><input type="date" class="in" id="ito" value="' + esc(st.to) + '" style="flex:1;min-width:130px"><button type="button" class="btn sm" id="iload">' + icon('download', 's') + 'Cargar</button></div><p class="tiny muted" style="margin-top:4px">Pone cada vehículo con su matrícula y la tarifa del cliente. Los ya facturados se marcan para que no se repitan.</p></div>') +
+    '<label class="f">Conceptos (precio sin IVA)</label>' + linesEditor(st.lineas, { fecha: true }) +
+    '<div class="two"><div><label class="f">IVA %</label><input class="in" id="iiv" inputmode="decimal" value="' + esc(st.ivaPct) + '"></div><div><label class="f">Retención IRPF %</label><input class="in" id="irt" inputmode="decimal" value="' + esc(st.retPct || 0) + '"></div></div>' +
+    '<div class="two"><div><label class="f">Vencimiento (opcional)</label><input type="date" class="in" id="ive" value="' + esc(st.vence || '') + '"></div><div><label class="f">Nota en la factura</label><input class="in" id="ino" value="' + esc(st.notas || '') + '" placeholder="Servicios del 16 al 19/11"></div></div>' +
+    '<div class="tot-l" id="itot"></div><div class="actions"><button class="btn green" id="isv">' + icon('file') + (f ? 'Guardar y rehacer PDF' : 'Emitir factura') + '</button></div>', (el, close) => {
+    const keep = () => { readLines(el, st.lineas); if (!f) { st.cliente = $('#ic', el).value; st.fecha = $('#ifd', el).value; st.from = $('#ifr', el).value; st.to = $('#ito', el).value; } st.ivaPct = $('#iiv', el).value; st.retPct = $('#irt', el).value; st.vence = $('#ive', el).value; st.notas = $('#ino', el).value; };
+    const upd = () => { keep(); const b = st.lineas.reduce((n, l) => n + C.num(l.cantidad || 1) * C.num(l.precio), 0), iv = b * C.num(st.ivaPct) / 100, rt = b * C.num(st.retPct) / 100; $('#itot', el).innerHTML = 'Base <b>' + C.eur(b) + '</b> · IVA ' + C.eur(iv) + (rt ? ' · Ret. -' + C.eur(rt) : '') + ' · Total <b>' + C.eur(b + iv - rt) + '</b>'; };
+    el.oninput = upd; upd();
+    $('#ladd', el).onclick = () => { keep(); st.lineas.push({ fecha: st.fecha, ref: '', concepto: '', cantidad: 1, precio: '' }); close(); draw(); };
+    $$('[data-del]', el).forEach(b => b.onclick = () => { keep(); st.lineas.splice(Number(b.dataset.del), 1); if (!st.lineas.length) st.lineas.push({ fecha: st.fecha, ref: '', concepto: '', cantidad: 1, precio: '' }); close(); draw(); });
+    const ld = $('#iload', el); if (ld) ld.onclick = async () => {
+      keep(); let r;
+      if (!(await command(async () => { r = await api('invoiceDraft', { cliente: st.cliente, from: st.from, to: st.to }); }))) return;
+      const nuevos = r.lineas.filter(l => !l.facturado), rep = r.lineas.length - nuevos.length;
+      if (!r.lineas.length) return toast('No hay servicios entregados en esas fechas.', true);
+      st.lineas = (nuevos.length ? nuevos : r.lineas).map(l => Object.assign({}, l));
+      toast(nuevos.length + ' servicios cargados' + (rep ? ' · ' + rep + ' ya estaban facturados' : ''));
+      close(); draw();
+    };
+    $('#isv', el).onclick = async () => {
+      keep();
+      const lines = st.lineas.filter(l => String(l.concepto || '').trim());
+      if (!lines.length) return toast('Añade al menos un concepto.', true);
+      if (lines.some(l => !(C.num(l.precio) > 0))) return toast('Falta el precio en alguna línea.', true);
+      if (!f && !(await confirmSheet('Emitir factura ' + nextInvNumber(), 'Se creará con número correlativo y se guardará el PDF en Drive.', 'Emitir'))) return;
+      let r;
+      if (await command(async () => { r = await api('invoiceSave', { id: f ? f.id : '', cliente: st.cliente, fecha: st.fecha, lineas: lines, ivaPct: st.ivaPct, retPct: st.retPct, vence: st.vence, notas: st.notas }, 120000); await loadCrm(true); }, f ? 'Factura corregida' : 'Factura ' + 'emitida')) { close(); render(); invoiceSheet(S.crm.facturas.find(x => x.id === r.id)); }
+    };
+  });
+  draw();
+}
+
+/* ---------- Contabilidad ---------- */
+function quarterCalc(y, q) {
+  const from = y + '-' + String((q - 1) * 3 + 1).padStart(2, '0') + '-01', to = q === 4 ? y + '-12-31' : shiftDay(y + '-' + String(q * 3 + 1).padStart(2, '0') + '-01', -1);
+  const inQ = d => String(d).slice(0, 10) >= from && String(d).slice(0, 10) <= to, ytd = d => String(d).slice(0, 4) === String(y) && String(d).slice(0, 10) <= to;
+  const fs = C.facturas(), mv = ((S.crm && S.crm.contabilidad) || []);
+  const gastos = mv.filter(m => m.tipo === 'Gasto');
+  const ingresos = fs.filter(f => inQ(f.fecha)).reduce((n, f) => n + C.num(f.imponible), 0);
+  const repercutido = fs.filter(f => inQ(f.fecha)).reduce((n, f) => n + C.num(f.iva), 0);
+  const gq = gastos.filter(m => inQ(m.fecha));
+  const soportado = gq.filter(m => m.deducible !== 'Pendiente').reduce((n, m) => n + C.num(m.iva) * C.num(m.ivaDed) / 100, 0);
+  const gastosDed = gq.filter(m => m.deducible === 'Sí').reduce((n, m) => n + C.num(m.imponible), 0);
+  const ingY = fs.filter(f => ytd(f.fecha)).reduce((n, f) => n + C.num(f.imponible), 0);
+  const gasY = gastos.filter(m => ytd(m.fecha) && m.deducible === 'Sí').reduce((n, m) => n + C.num(m.imponible), 0);
+  const prev130 = mv.filter(m => m.tipo === 'Impuesto' && /130/.test(m.categoria + m.concepto) && ytd(m.fecha)).reduce((n, m) => n + C.num(m.total), 0);
+  const ret = fs.filter(f => ytd(f.fecha)).reduce((n, f) => n + C.num(f.ret), 0);
+  return { from: from, to: to, ingresos: ingresos, gastos: gq.reduce((n, m) => n + C.num(m.imponible), 0), gastosDed: gastosDed, beneficio: ingresos - gastosDed, repercutido: repercutido, soportado: soportado, iva303: repercutido - soportado, rend: ingY - gasY, m130: Math.max(0, (ingY - gasY) * 0.2 - prev130 - ret), prev130: prev130, pendientes: gq.filter(m => m.deducible === 'Pendiente').length };
+}
+VIEWS.contabilidad = function () {
+  if (!isAdmin()) return VIEWS.inicio();
+  if (!S.crm) return crmWait('Contabilidad');
+  loadCrm();
+  const hoy = C.hoy();
+  const y = Number(S.ui.accY || hoy.slice(0, 4)), q = Number(S.ui.accQ || C.q(hoy));
+  const r = quarterCalc(y, q);
+  const filtro = S.ui.accF || 'todos';
+  let movs = S.crm.contabilidad.filter(m => m.tipo !== 'Anulado' && m.fecha >= r.from && m.fecha <= r.to).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+  if (filtro === 'pend') movs = movs.filter(m => m.deducible === 'Pendiente');
+  const html =
+    '<div class="row" style="gap:8px"><div class="seg grow">' + [1, 2, 3, 4].map(n => '<button data-q="' + n + '" class="' + (n === q ? 'on' : '') + '">T' + n + '</button>').join('') + '</div><select class="in" id="ay" style="width:auto">' + [y + 1, y, y - 1].filter(v => v <= Number(hoy.slice(0, 4))).map(v => '<option ' + (v === y ? 'selected' : '') + '>' + v + '</option>').join('') + '</select></div>' +
+    '<div class="kpis k4" style="margin-top:10px"><div class="kpi"><small>Ingresos (base)</small><b>' + C.eur0(r.ingresos) + '</b></div><div class="kpi"><small>Gastos deducibles</small><b>' + C.eur0(r.gastosDed) + '</b><small class="tiny muted">de ' + C.eur0(r.gastos) + ' registrados</small></div><div class="kpi"><small>Beneficio</small><b>' + C.eur0(r.beneficio) + '</b></div><div class="kpi"><small>IVA 303 (est.)</small><b>' + C.eur0(r.iva303) + '</b></div></div>' +
+    '<div class="card" style="margin-top:10px"><div class="row between"><h2>Trimestre ' + q + ' · ' + y + '</h2><span class="small muted">' + C.d(r.from) + ' – ' + C.d(r.to) + '</span></div>' +
+    '<div class="grid2" style="margin-top:8px"><dl class="kv"><dt>IVA repercutido</dt><dd>' + C.eur(r.repercutido) + '</dd><dt>IVA soportado deducible</dt><dd>' + C.eur(r.soportado) + '</dd><dt><b>Modelo 303</b></dt><dd><b>' + C.eur(r.iva303) + '</b></dd></dl>' +
+    '<dl class="kv"><dt>Rendimiento acumulado</dt><dd>' + C.eur(r.rend) + '</dd><dt>Pagos 130 anteriores</dt><dd>' + C.eur(r.prev130) + '</dd><dt><b>Modelo 130 (20 %)</b></dt><dd><b>' + C.eur(r.m130) + '</b></dd></dl></div>' +
+    (r.pendientes ? '<div class="banner warn" style="margin-top:10px">' + icon('alert') + '<span class="grow">' + r.pendientes + ' gastos sin revisar no cuentan en el cálculo. Revísalos con el ticket.</span><button class="btn sm" data-f="pend">Ver</button></div>' : '') +
+    '<p class="tiny muted" style="margin-top:8px">Estimación orientativa con lo registrado aquí. Confírmala con tu gestor antes de presentar.</p></div>' +
+    '<div class="row" style="gap:8px;margin-top:12px"><div class="seg grow"><button data-f="todos" class="' + (filtro === 'todos' ? 'on' : '') + '">Movimientos</button><button data-f="pend" class="' + (filtro === 'pend' ? 'on' : '') + '">Por revisar</button></div><button class="btn green" id="gnew">' + icon('plus') + '<span class="hide-s">Gasto</span></button></div>' +
+    '<div class="card list" style="padding:2px 14px;margin-top:10px">' + (movs.length ? movs.map(m => '<div class="li" data-g="' + esc(m.id) + '" style="cursor:pointer"><div class="grow" style="min-width:0"><b class="ellipsis" style="display:block">' + esc(m.concepto) + '</b><div class="small muted ellipsis">' + C.d(m.fecha) + ' · ' + esc(m.categoria) + (m.origen === 'Almacén' ? ' · almacén' : '') + '</div></div><div style="text-align:right"><b class="small">' + C.eur(m.total) + '</b><div>' + (m.tipo === 'Impuesto' ? '<span class="chip info">Impuesto</span>' : m.tipo === 'Excluido' ? '<span class="chip">Personal</span>' : m.deducible === 'Pendiente' ? '<span class="chip warn">Revisar</span>' : m.deducible === 'Sí' ? '<span class="chip ok">Deducible</span>' : '<span class="chip">No deduce</span>') + '</div></div></div>').join('') : '<p class="small muted" style="padding:12px 0">Sin movimientos en este trimestre.</p>') + '</div>' +
+    '<button class="btn ghost wide" style="margin-top:12px" id="aset">' + icon('sliders') + 'Objetivos y datos de facturación</button>';
+  return { title: 'Contabilidad', html: html, mount: el => {
+    $$('[data-q]', el).forEach(b => b.onclick = () => { S.ui.accQ = b.dataset.q; render(); });
+    $('#ay', el).onchange = e => { S.ui.accY = e.target.value; render(); };
+    $$('[data-f]', el).forEach(b => b.onclick = () => { S.ui.accF = b.dataset.f; render(); });
+    $('#gnew', el).onclick = () => accSheet(null);
+    $$('[data-g]', el).forEach(r => r.onclick = () => accSheet(S.crm.contabilidad.find(m => m.id === r.dataset.g)));
+    $('#aset', el).onclick = settingsSheet;
+  } };
+};
+function accSheet(m) {
+  const st = m ? Object.assign({}, m) : { fecha: madridDay(), tipo: 'Gasto', categoria: 'Combustible', concepto: '', proveedor: '', total: '', ivaPct: 21, deducible: 'Sí', ivaDed: 100, metodo: 'Tarjeta', notas: '' };
+  const cats = (S.crm.categorias || []).concat(['Modelo 303', 'Modelo 130', 'Gasto particular']);
+  sheet(m ? 'Movimiento' : 'Nuevo gasto', '<div class="seg" id="at">' + [['Gasto', 'Gasto'], ['Impuesto', 'Impuesto pagado'], ['Excluido', 'Personal']].map(t => '<button type="button" data-t="' + t[0] + '" class="' + (st.tipo === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div>' +
+    '<div class="two"><div><label class="f">Fecha</label><input type="date" class="in" id="af" value="' + esc(String(st.fecha).slice(0, 10)) + '"></div><div><label class="f">Total pagado</label><input class="in" id="atot" inputmode="decimal" value="' + esc(st.total === '' ? '' : String(st.total).replace('.', ',')) + '"></div></div>' +
+    '<label class="f">Concepto</label><input class="in" id="ac" value="' + esc(st.concepto) + '" placeholder="Gasoil furgoneta">' +
+    '<div class="two"><div><label class="f">Categoría</label><select class="in" id="acat">' + cats.map(c => '<option ' + (c === st.categoria ? 'selected' : '') + '>' + esc(c) + '</option>').join('') + '</select></div><div><label class="f">Proveedor</label><input class="in" id="ap" value="' + esc(st.proveedor || '') + '"></div></div>' +
+    '<div class="two"><div><label class="f">IVA del ticket %</label><select class="in" id="aiv">' + [21, 10, 4, 0].map(v => '<option ' + (Number(st.ivaPct) === v ? 'selected' : '') + '>' + v + '</option>').join('') + '</select></div><div><label class="f">Forma de pago</label><input class="in" id="am" value="' + esc(st.metodo || '') + '"></div></div>' +
+    '<div class="two"><div><label class="f">¿Deducible en IRPF?</label><select class="in" id="ad">' + ['Sí', 'No', 'Pendiente'].map(v => '<option ' + (st.deducible === v ? 'selected' : '') + '>' + v + '</option>').join('') + '</select></div><div><label class="f">IVA deducible</label><select class="in" id="aid">' + [[100, '100 %'], [50, '50 % (uso mixto)'], [0, 'Nada']].map(v => '<option value="' + v[0] + '" ' + (Number(st.ivaDed) === v[0] ? 'selected' : '') + '>' + v[1] + '</option>').join('') + '</select></div></div>' +
+    '<label class="f">Notas</label><textarea class="in" id="an">' + esc(typeof st.notas === 'string' ? st.notas : '') + '</textarea>' +
+    '<div class="actions">' + (m ? '<button class="btn danger" id="adel">Anular</button>' : '') + '<button class="btn" id="asv">Guardar</button></div>', (el, close) => {
+    let tipo = st.tipo;
+    $$('[data-t]', el).forEach(b => b.onclick = () => { tipo = b.dataset.t; $$('[data-t]', el).forEach(x => x.classList.toggle('on', x === b)); if (tipo !== 'Gasto') { $('#ad', el).value = 'No'; $('#aid', el).value = '0'; $('#aiv', el).value = '0'; } });
+    $('#asv', el).onclick = async () => {
+      const body = { id: m ? m.id : '', tipo: tipo, fecha: $('#af', el).value, total: C.num($('#atot', el).value), concepto: $('#ac', el).value, categoria: $('#acat', el).value, proveedor: $('#ap', el).value, ivaPct: $('#aiv', el).value, metodo: $('#am', el).value, deducible: $('#ad', el).value, ivaDed: $('#aid', el).value, notas: $('#an', el).value };
+      if (!body.concepto.trim() || !(body.total > 0)) return toast('Indica concepto e importe.', true);
+      if (await command(async () => { await api('accSave', body); await loadCrm(true); }, 'Guardado')) { close(); render(); }
+    };
+    const dl = $('#adel', el); if (dl) dl.onclick = async () => { if (await command(async () => { await api('accSave', { id: m.id, borrar: true }); await loadCrm(true); }, 'Anulado')) { close(); render(); } };
+  });
+}
+function settingsSheet() {
+  const o = S.crm.objetivos || {}, e = S.crm.emisor || {};
+  const f = (id, l, v, ph) => '<div><label class="f">' + l + '</label><input class="in" id="' + id + '" value="' + esc(v == null ? '' : v) + '" placeholder="' + esc(ph || '') + '"></div>';
+  sheet('Objetivos y facturación', '<h3>Objetivos</h3><div class="two">' + f('oa', 'Facturación anual (base)', o.anual) + f('om', 'Facturación mensual', o.mensual) + '</div><div class="two">' + f('os', 'Servicios al año', o.servicios) + f('oc', 'Clientes nuevos al año', o.clientes) + '</div>' +
+    '<h3 style="margin-top:16px">Datos que salen en tus facturas</h3>' + f('en', 'Nombre comercial', e.nombre) + '<div class="two">' + f('et', 'Titular', e.titular) + f('ei', 'NIF', e.nif) + '</div>' + f('ed', 'Dirección', e.direccion) + '<div class="two">' + f('ef', 'Teléfono', e.telefono) + f('ee', 'Correo', e.email) + '</div><div class="two">' + f('ew', 'Web', e.web) + f('eb', 'IBAN', e.iban) + '</div><div class="two">' + f('ep', 'Forma de pago', e.pago) + f('ec', 'Condiciones', e.condiciones, 'Pago a 15 días') + '</div>' +
+    '<div class="actions"><button class="btn" id="ssv">Guardar</button></div>', (el, close) => {
+    $('#ssv', el).onclick = async () => {
+      const v = id => $('#' + id, el).value;
+      if (await command(async () => { await api('crmSettings', { objetivos: { anual: C.num(v('oa')), mensual: C.num(v('om')), servicios: C.num(v('os')), clientes: C.num(v('oc')) }, emisor: { nombre: v('en'), titular: v('et'), nif: v('ei'), direccion: v('ed'), telefono: v('ef'), email: v('ee'), web: v('ew'), iban: v('eb'), pago: v('ep'), condiciones: v('ec') } }); await loadCrm(true); }, 'Guardado')) { close(); render(); }
+    };
+  });
+}
+
+/* ---------- Agenda (Google Calendar) ---------- */
+VIEWS.agenda = function () {
+  if (!isAdmin()) return VIEWS.inicio();
+  const from = S.ui.agFrom || madridDay(), to = shiftDay(from, 13);
+  const html = '<div class="row" style="gap:8px"><button class="btn ghost sm" id="agp" aria-label="Anterior">' + icon('back', 's') + '</button><b class="grow" style="text-align:center">' + C.dShort(from) + ' – ' + C.dShort(to) + '</b><button class="btn ghost sm" id="agn" aria-label="Siguiente">' + icon('chev', 's') + '</button><button class="btn green" id="agnew">' + icon('plus') + '<span class="hide-s">Evento</span></button></div>' +
+    '<div id="agl" style="margin-top:10px"><div class="card empty">Cargando tu calendario…</div></div><p class="tiny muted" style="margin-top:8px">Es tu Google Calendar: lo que apuntes aquí lo ves también en el móvil, y los seguimientos de clientes y prospectos aparecen solos.</p>';
+  return { title: 'Agenda', html: html, mount: async el => {
+    $('#agp', el).onclick = () => { S.ui.agFrom = shiftDay(from, -14); render(); };
+    $('#agn', el).onclick = () => { S.ui.agFrom = shiftDay(from, 14); render(); };
+    $('#agnew', el).onclick = () => eventSheet(null);
+    try {
+      const r = await api('agendaList', { from: from, to: to });
+      if (!r.ok) { $('#agl').innerHTML = empty('calendar', 'Calendar sin conectar', 'Ejecuta activarCrm() en el editor de Apps Script para autorizarlo.'); return; }
+      const by = {};
+      r.eventos.forEach(e => { const d = e.todoDia ? new Date(e.inicio).toISOString().slice(0, 10) : madridDay(e.inicio); (by[d] = by[d] || []).push(e); });
+      const days = []; for (let d = from; d <= to; d = shiftDay(d, 1)) days.push(d);
+      const box = $('#agl'); if (!box) return;
+      box.innerHTML = days.filter(d => by[d] || d === madridDay()).map(d => '<div class="ag-d"><div class="ag-h ' + (d === madridDay() ? 'today' : '') + '">' + new Date(d + 'T12:00:00Z').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }) + '</div>' +
+        (by[d] || []).sort((a, b) => (a.todoDia ? 0 : 1) - (b.todoDia ? 0 : 1) || a.inicio.localeCompare(b.inicio)).map(e => '<div class="ag-e ' + (/^Seguimiento/.test(e.titulo) ? 'seg' : '') + '" data-e="' + esc(e.id) + '"><span class="ag-t">' + (e.todoDia ? 'Todo el día' : fTime(e.inicio) + '–' + fTime(e.fin)) + '</span><b class="grow ellipsis">' + esc(e.titulo) + '</b></div>').join('') + (by[d] ? '' : '<p class="small muted" style="padding:6px 2px">Sin eventos.</p>') + '</div>').join('') || empty('calendar', 'Dos semanas libres', 'No hay nada en tu calendario.');
+      $$('[data-e]', box).forEach(x => x.onclick = () => eventSheet(r.eventos.find(e => e.id === x.dataset.e)));
+    } catch (e) { const b = $('#agl'); if (b) b.innerHTML = empty('alert', 'No disponible', e.message); }
+  } };
+};
+function eventSheet(ev) {
+  const d = ev ? (ev.todoDia ? new Date(ev.inicio).toISOString().slice(0, 10) : madridDay(ev.inicio)) : madridDay();
+  sheet(ev ? 'Evento' : 'Nuevo evento', '<label class="f" style="margin-top:0">Título</label><input class="in" id="et" value="' + esc(ev ? ev.titulo : '') + '" placeholder="Servicio K2 · 4 autocaravanas">' +
+    '<div class="two"><div><label class="f">Fecha</label><input type="date" class="in" id="ed" value="' + d + '"></div><div class="two"><div><label class="f">Inicio</label><input type="time" class="in" id="ei" value="' + (ev && !ev.todoDia ? fTime(ev.inicio) : '') + '"></div><div><label class="f">Fin</label><input type="time" class="in" id="ef" value="' + (ev && !ev.todoDia ? fTime(ev.fin) : '') + '"></div></div></div>' +
+    '<label class="f">Lugar</label><input class="in" id="el" value="' + esc(ev ? ev.lugar : '') + '"><label class="f">Notas</label><textarea class="in" id="en">' + esc(ev ? ev.notas : '') + '</textarea>' +
+    '<p class="tiny muted">Sin hora, se guarda como evento de todo el día.</p><div class="actions">' + (ev ? '<button class="btn danger" id="edel">Borrar</button>' : '') + '<button class="btn" id="esv">Guardar</button></div>', (el, close) => {
+    $('#esv', el).onclick = async () => { if (await command(() => api('agendaSave', { id: ev ? ev.id : '', titulo: $('#et', el).value, fecha: $('#ed', el).value, inicio: $('#ei', el).value, fin: $('#ef', el).value, lugar: $('#el', el).value, notas: $('#en', el).value }), 'Guardado en tu calendario')) { close(); render(); } };
+    const dl = $('#edel', el); if (dl) dl.onclick = async () => { if (await command(() => api('agendaDelete', { id: ev.id }), 'Borrado')) { close(); render(); } };
+  });
+}
+
+/* ---------- Mis datos (socios y equipo) ---------- */
+function profileSheet() {
+  const m = me();
+  sheet('Mis datos', '<p class="small muted">Los usamos para avisarte. Tu nombre lo pone dirección al crear tu usuario.</p><label class="f">Correo</label><input class="in" id="me1" type="email" value="' + esc(m.email || '') + '"><label class="f">Teléfono</label><input class="in" id="me2" inputmode="tel" value="' + esc(m.telefono || '') + '"><div class="actions"><button class="btn" id="msv">Guardar</button></div>', (el, close) => {
+    $('#msv', el).onclick = async () => { if (await command(async () => { const r = await api('profileSave', { email: $('#me1', el).value, telefono: $('#me2', el).value }); Object.assign(S.data.me, r); persistSnap(); }, 'Guardado')) { close(); render(); } };
+  });
+}
+
+/* ---------- Vehículo animado en la línea de pasos (vista del cliente) ---------- */
+const RV_X = [40, 180, 320, 460, 600];
+function vehKind(v) { v = String(v || '').toLowerCase(); if (/camper/.test(v)) return 'camper'; if (/caravana/.test(v) && !/auto/.test(v)) return 'caravana'; if (/coche|turismo/.test(v)) return 'coche'; if (/furgo/.test(v)) return 'furgo'; if (/tractora|cabeza/.test(v)) return 'tractora'; if (/cami/.test(v)) return 'camion'; if (/autob|bus/.test(v)) return 'bus'; return 'auto'; }
+function vehSvg(kind) {
+  const B = '#1f7a58', D = '#102d48', W = '#ffffff', G = '#33424a', Y = '#ac812e';
+  const wh = (x, r) => '<g class="wh"><circle cx="' + x + '" cy="' + (92 - r) + '" r="' + r + '" fill="' + G + '"/><circle cx="' + x + '" cy="' + (92 - r) + '" r="' + (r * 0.42) + '" fill="#cfd8dc"/><line x1="' + (x - r + 2) + '" y1="' + (92 - r) + '" x2="' + (x + r - 2) + '" y2="' + (92 - r) + '" stroke="#cfd8dc" stroke-width="1.3"/></g>';
+  const st = 'stroke="' + D + '" stroke-width="1.6"';
+  return {
+    auto: '<path d="M-42 82V38q0-6 6-6h58q8 0 12 8l9 18q4 4 4 10v14z" fill="' + W + '" ' + st + '/><path d="M-42 50h80" stroke="' + Y + '" stroke-width="2"/><rect x="-34" y="39" width="14" height="9" rx="2" fill="' + B + '"/><rect x="-14" y="39" width="14" height="9" rx="2" fill="' + B + '"/><path d="M28 42l7 15h-11v-15z" fill="' + B + '"/>' + wh(-26, 9) + wh(28, 9),
+    camper: '<path d="M-34 82V44q0-6 6-6h44q6 0 10 6l10 14q4 2 4 8v16z" fill="' + W + '" ' + st + '/><path d="M-34 60h70" stroke="' + Y + '" stroke-width="2"/><rect x="-26" y="45" width="24" height="10" rx="2" fill="' + B + '"/><path d="M18 46l8 12h-12v-12z" fill="' + B + '"/>' + wh(-20, 8) + wh(22, 8),
+    caravana: '<path d="M-40 82V40q0-7 8-7h52q14 0 16 15v34z" fill="' + W + '" ' + st + '/><path d="M-40 58h76" stroke="' + Y + '" stroke-width="2"/><rect x="-30" y="42" width="18" height="10" rx="2" fill="' + B + '"/><rect x="2" y="42" width="18" height="10" rx="2" fill="' + B + '"/><path d="M36 76l16 4" stroke="' + G + '" stroke-width="2.5"/>' + wh(-4, 9),
+    coche: '<path d="M-34 82V66l11-4 10-14h28l13 14 12 4v16z" fill="' + W + '" ' + st + '/><path d="M-9 51h10v11h-19z M5 51h8l9 11h-17z" fill="' + B + '"/>' + wh(-19, 8) + wh(23, 8),
+    furgo: '<path d="M-38 82V40q0-4 4-4h50q6 0 10 8l9 15q4 2 4 8v15z" fill="' + W + '" ' + st + '/><path d="M-38 62h76" stroke="' + Y + '" stroke-width="2"/><path d="M20 44l8 15h-12v-15z" fill="' + B + '"/>' + wh(-24, 8) + wh(25, 8),
+    tractora: '<rect x="-30" y="62" width="22" height="10" fill="' + G + '"/><path d="M-12 82V34q0-4 4-4h26q7 0 9 7l6 21v24z" fill="' + W + '" ' + st + '/><rect x="3" y="38" width="17" height="15" rx="2" fill="' + B + '"/><rect x="-16" y="22" width="4" height="14" rx="1" fill="' + G + '"/>' + wh(-20, 9) + wh(20, 9),
+    camion: '<rect x="-52" y="28" width="64" height="54" rx="3" fill="' + W + '" ' + st + '/><path d="M-52 60h64" stroke="' + Y + '" stroke-width="2"/><path d="M14 82V42h15l13 15v25z" fill="' + W + '" ' + st + '/><path d="M29 46l9 11h-11v-11z" fill="' + B + '"/>' + wh(-36, 9) + wh(-14, 9) + wh(30, 9),
+    bus: '<rect x="-54" y="32" width="108" height="50" rx="7" fill="' + W + '" ' + st + '/><path d="M-54 66h108" stroke="' + Y + '" stroke-width="2"/>' + [-46, -26, -6, 14].map(x => '<rect x="' + x + '" y="40" width="16" height="13" rx="2" fill="' + B + '"/>').join('') + '<rect x="37" y="40" width="12" height="26" rx="2" fill="' + B + '"/>' + wh(-32, 9) + wh(32, 9)
+  }[kind];
+}
+function rvStepper(s) {
+  const k = Math.max(0, ETAPAS.indexOf(s.etapa));
+  const when = { 0: s.creado, 3: s.listo, 4: s.cerrado };
+  const prev = S.ui.rvStep && S.ui.rvStep[s.id] != null ? S.ui.rvStep[s.id] : (k > 0 ? k - 1 : 0);
+  return '<div class="rv-steps"><svg viewBox="0 0 640 138" width="100%" role="img" aria-label="Estado: ' + esc(s.etapa) + '">' +
+    '<line x1="40" y1="96" x2="600" y2="96" stroke="#dbe3e6" stroke-width="4" stroke-linecap="round"/>' +
+    '<line class="rv-prog" x1="40" y1="96" x2="' + RV_X[prev] + '" y2="96" data-x2="' + RV_X[k] + '" stroke="#1f7a58" stroke-width="4" stroke-linecap="round"/>' +
+    ETAPAS.map((e, i) => '<circle cx="' + RV_X[i] + '" cy="96" r="7" fill="' + (i <= k ? '#1f7a58' : '#fff') + '" stroke="' + (i <= k ? '#1f7a58' : '#c5d1d6') + '" stroke-width="2.5"/>' +
+      '<text x="' + RV_X[i] + '" y="117" text-anchor="middle" font-size="12" font-weight="' + (i === k ? 700 : 500) + '" fill="' + (i === k ? '#102d48' : '#6b8089') + '">' + e + '</text>' +
+      (when[i] && i <= k ? '<text x="' + RV_X[i] + '" y="130" text-anchor="middle" font-size="10" fill="#8a9ba4">' + esc(fDate(when[i], true)) + '</text>' : '')).join('') +
+    (k === 1 ? [0, 1, 2].map(i => '<circle cx="' + (RV_X[1] - 24 + i * 22) + '" cy="30" r="' + (4 + i) + '" fill="none" stroke="#85B7EB" stroke-width="1.6"><animate attributeName="cy" values="44;6;44" dur="' + (1.7 + i * 0.35) + 's" repeatCount="indefinite"/><animate attributeName="opacity" values="1;0;1" dur="' + (1.7 + i * 0.35) + 's" repeatCount="indefinite"/></circle>').join('') : '') +
+    (k === 4 ? '<g transform="translate(' + RV_X[4] + ',24)"><circle r="11" fill="#1f7a58"/><path d="M-5 0l3.5 3.5L5-4" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/></g>' : '') +
+    '<g class="rv-veh" data-sid="' + esc(s.id) + '" data-k="' + k + '" data-x="' + RV_X[k] + '" style="transform:translateX(' + RV_X[prev] + 'px)">' + vehSvg(vehKind(s.vehiculo)) + '</g></svg></div>';
+}
+function animRv() {
+  S.ui.rvStep = S.ui.rvStep || {};
+  $$('.rv-veh').forEach(g => {
+    const x = g.dataset.x, sid = g.dataset.sid, k = Number(g.dataset.k);
+    const moving = S.ui.rvStep[sid] !== k;
+    const line = g.closest('svg').querySelector('.rv-prog');
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (moving) g.classList.add('go');
+      g.style.transform = 'translateX(' + x + 'px)';
+      if (line) line.setAttribute('x2', line.dataset.x2);
+      setTimeout(() => g.classList.remove('go'), 1700);
+    }));
+    S.ui.rvStep[sid] = k;
+  });
+}
+
+function crmStrip() {
+  loadCrm();
+  if (!S.crm) return '';
+  const hoy = madridDay();
+  const segs = C.activos().filter(c => !c.revisar && c.proxFecha && c.proxFecha <= hoy).length + S.crm.clientes.filter(c => c.crm && c.crm.proxFecha && c.crm.proxFecha <= hoy).length;
+  const pend = C.facturas().reduce((n, f) => n + C.pendiente(f), 0);
+  const frio = S.crm.clientes.filter(c => c.activo && c.estado === 'Se enfría').length;
+  return '<button class="strip" data-act="go" data-to="panel">' + icon('chart', 's') + '<span><b>' + segs + '</b> seguimientos hoy</span><span><b>' + C.eur0(pend) + '</b> por cobrar</span>' + (frio ? '<span class="bad-t"><b>' + frio + '</b> se enfría' + (frio > 1 ? 'n' : '') + '</span>' : '') + icon('chev', 's') + '</button>';
 }
 
 /* ============================ Relojes en vivo ============================ */

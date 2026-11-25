@@ -265,3 +265,49 @@ table.t tr.click{cursor:pointer}table.t tr.click:hover td{background:#f8fafb}
 .irow{cursor:pointer}.irow:active{background:var(--bg)}
 .lvl{display:flex;gap:3px;justify-content:flex-end}.lvl i{width:13px;height:7px;border-radius:3px}
 .search input.in{padding-left:38px}
+
+/* ---------- CRM y administración ---------- */
+.kpis.k4{grid-template-columns:repeat(2,1fr)}
+@media(min-width:760px){.kpis.k4{grid-template-columns:repeat(4,1fr)}}
+.kpi .progress{height:5px}
+.kpi small.tiny{display:block;margin-top:2px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;align-items:start}
+@media(min-width:900px){.grid2{grid-template-columns:repeat(2,minmax(0,1fr))}.grid2>.card+.card{margin-top:0}}
+.grid2>.card{margin-top:0}
+.list>.li.row-l,.list>a.li{text-decoration:none;color:inherit;padding:9px 0}
+.list>.li b{font-weight:600;font-size:14px}
+.li .small{font-size:12.5px}
+.tl{border-left:2px solid var(--line);margin-left:4px;padding-left:12px}
+.tl-i{position:relative;padding:4px 0 10px}
+.tl-i:before{content:"";position:absolute;left:-17px;top:9px;width:8px;height:8px;border-radius:50%;background:var(--gold)}
+.tl-i p{font-size:13.5px;margin-top:2px}
+.lnr{display:flex;gap:6px;align-items:center;margin-top:6px}
+.lnr .in{min-width:0;flex:1;padding:0 8px;height:38px;font-size:13.5px}
+.lnr .in.grow2{flex:2.4}.lnr .in.num{flex:.7;text-align:right}
+.lnr input[type=date]{flex:1.1}
+@media(max-width:560px){.lnr{flex-wrap:wrap;padding:8px;background:var(--bg);border-radius:10px}.lnr .in.grow2{flex-basis:100%}}
+.tot-l{margin-top:12px;padding:10px 12px;background:var(--bg);border-radius:10px;font-size:13.5px;text-align:right;font-variant-numeric:tabular-nums}
+.sm-sel{width:auto;height:32px;padding:0 6px;font-size:12.5px}
+.card.soft{background:var(--bg);box-shadow:none}
+@media(max-width:520px){.hide-s{display:none}}
+.strip{display:flex;align-items:center;gap:14px;width:100%;margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);background:#fff;box-shadow:var(--shadow);font-size:13px;color:var(--muted);cursor:pointer;text-align:left;flex-wrap:wrap}
+.strip b{color:var(--navy);font-variant-numeric:tabular-nums}.strip .bad-t b{color:var(--bad)}
+.strip svg:last-child{margin-left:auto}
+.ag-d{margin-bottom:10px}
+.ag-h{font-size:12px;font-weight:650;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:6px 2px}
+.ag-h.today{color:var(--green)}
+.ag-e{display:flex;gap:10px;align-items:center;background:#fff;border:1px solid var(--line);border-left:3px solid var(--navy);border-radius:8px;padding:9px 11px;margin-top:6px;cursor:pointer;font-size:14px}
+.ag-e.seg{border-left-color:var(--gold)}
+.ag-t{font-size:12px;color:var(--muted);white-space:nowrap;min-width:84px}
+.ag-e b{font-weight:600}
+/* Línea de pasos con el vehículo */
+.rv-steps{margin:12px -4px 0;background:#fff;border-radius:10px}
+.rv-steps svg{display:block;overflow:visible}
+.rv-veh{transition:transform 1.6s cubic-bezier(.45,.05,.25,1)}
+.rv-veh .wh{transform-box:fill-box;transform-origin:center}
+.rv-veh.go .wh{animation:rvspin .45s linear infinite}
+.rv-veh.go{animation:rvbump .25s ease-in-out infinite alternate}
+@keyframes rvspin{to{transform:rotate(360deg)}}
+@keyframes rvbump{to{translate:0 -1px}}
+.rv-prog{transition:all 1.6s cubic-bezier(.45,.05,.25,1)}
+@media(prefers-reduced-motion:reduce){.rv-veh,.rv-prog{transition:none}.rv-veh.go,.rv-veh.go .wh{animation:none}}

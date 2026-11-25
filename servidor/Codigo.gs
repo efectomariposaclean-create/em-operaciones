@@ -10,7 +10,7 @@
 
 const APP = {
   nombre: 'Efecto Mariposa · Operaciones',
-  version: '2.2.0',
+  version: '3.0.0',
   appUrl: 'https://efectomariposaclean-create.github.io/em-operaciones/',
   diasEnlace: 15,          // días que el enlace del particular sigue activo tras la entrega
   zona: 'Europe/Madrid',
@@ -18,10 +18,12 @@ const APP = {
   diasJornadasArchivo: 120,
   copiasGuardadas: 30,    // copias diarias que se conservan
   sesionDias: 30,
-  logoDriveId: '19NRhA8ki8p5HPogdmMtAWarafkQAUu5I'
+  logoDriveId: '19NRhA8ki8p5HPogdmMtAWarafkQAUu5I',
+  marcaAguaDriveId: '1MmA9SLhIcpODuhz0m2JatGb2LZAYyyya'
 };
 
 const ROLES = ['admin', 'trabajador', 'subcontrata', 'cliente'];
+const VEHICULOS = ['Autocaravana', 'Camper', 'Caravana', 'Coche', 'Furgoneta', 'Cabeza tractora', 'Camión', 'Autobús', 'Otro'];
 const PARTICULARES = 'PARTICULARES';
 const TIPOS_GENERAL = ['Interior completo', 'Interior profundo', 'Exterior', 'Integral completo', 'Integral profundo'];
 const TIPOS_K2 = ['Alquiler', 'Exposición', 'Entrega', 'Ocasión'];
@@ -34,8 +36,8 @@ const TIPOS_INCIDENCIA = ['Suciedad extraordinaria', 'Daño o avería', 'Zona in
 /* ------------------------------------------------------------------ */
 
 const SCHEMA = {
-  Clientes:   ['id', 'nombre', 'tipo', 'protocolo', 'tipos', 'contacto', 'telefono', 'email', 'revisor', 'carpeta', 'activo', 'creado', 'avisos'],
-  Usuarios:   ['id', 'nombre', 'rol', 'pin', 'acceso', 'horas', 'activo', 'tokenV', 'empresa', 'creado'],
+  Clientes:   ['id', 'nombre', 'tipo', 'protocolo', 'tipos', 'contacto', 'telefono', 'email', 'revisor', 'carpeta', 'activo', 'creado', 'avisos', 'nif', 'direccion', 'ritmo', 'ultimo', 'crm', 'tarifa'],
+  Usuarios:   ['id', 'nombre', 'rol', 'pin', 'acceso', 'horas', 'activo', 'tokenV', 'empresa', 'creado', 'email', 'telefono'],
   Servicios:  ['id', 'cliente', 'matricula', 'chasis', 'marca', 'modelo', 'vehiculo', 'tipo', 'estado', 'suciedad', 'alcance', 'exterior', 'extras', 'grupos', 'notas', 'fases', 'maquina', 'recibo', 'creadoPor', 'creado', 'actualizado', 'cerrado', 'archivado', 'carpeta', 'version', 'enlace', 'listo', 'avisos'],
   Tiempos:    ['id', 'servicio', 'usuario', 'tipo', 'inicio', 'fin', 'motivo'],
   Incidencias:['id', 'servicio', 'tipo', 'texto', 'bloqueante', 'por', 'fecha', 'resuelta', 'visible'],
@@ -47,11 +49,15 @@ const SCHEMA = {
   Articulos:  ['id', 'codigo', 'tipo', 'grupo', 'nombre', 'marca', 'funcion', 'ubicacion', 'medida', 'nivel', 'cantidad', 'unidad', 'minimo', 'estado', 'precaucion', 'notas', 'compraEstado', 'compraPrioridad', 'compraCantidad', 'compraMotivo', 'proveedor', 'enlace', 'precio', 'foto', 'mini', 'activo', 'actualizado'],
   Movimientos:['id', 'fecha', 'articulo', 'tipo', 'cantidad', 'nivel', 'importe', 'categoria', 'concepto', 'servicio', 'usuario', 'nota'],
   Cargas:     ['id', 'nombre', 'base', 'segun', 'no', 'orden'],
-  Ubicaciones:['id', 'ubicacion', 'seccion', 'material', 'regla']
+  Ubicaciones:['id', 'ubicacion', 'seccion', 'material', 'regla'],
+  Contactos:  ['id', 'nombre', 'tipo', 'contacto', 'telefono', 'email', 'vehiculo', 'ubicacion', 'fase', 'prioridad', 'proxAccion', 'proxFecha', 'origen', 'importe', 'notas', 'revisar', 'cliente', 'evento', 'carpeta', 'creado', 'actualizado', 'ref'],
+  Facturas:   ['id', 'numero', 'fecha', 'cliente', 'datos', 'lineas', 'imponible', 'ivaPct', 'iva', 'retPct', 'ret', 'total', 'estado', 'cobros', 'vence', 'archivo', 'notas', 'servicios', 'origen', 'por', 'creado'],
+  Presupuestos:['id', 'numero', 'fecha', 'contacto', 'cliente', 'datos', 'lineas', 'imponible', 'ivaPct', 'iva', 'total', 'validez', 'estado', 'archivo', 'notas', 'por', 'creado'],
+  Contabilidad:['id', 'fecha', 'tipo', 'categoria', 'concepto', 'proveedor', 'imponible', 'ivaPct', 'iva', 'total', 'deducible', 'ivaDed', 'metodo', 'justificante', 'notas', 'origen', 'ref', 'por', 'creado']
 };
 const NOCACHE = { Articulos: 1, Movimientos: 1, Cargas: 1, Ubicaciones: 1 };
-const JSON_COLS = { tipos: 1, acceso: 1, extras: 1, grupos: 1, notas: 1, fases: 1, maquina: 1, recibo: 1, archivado: 1, resuelta: 1, descansos: 1, geo: 1, auditoria: 1, servicios: 1, antes: 1, despues: 1, avisos: 1, conformidad: 1, base: 1, segun: 1, no: 1 };
-const SCHEMA_V = '3';
+const JSON_COLS = { tipos: 1, acceso: 1, extras: 1, grupos: 1, notas: 1, fases: 1, maquina: 1, recibo: 1, archivado: 1, resuelta: 1, descansos: 1, geo: 1, auditoria: 1, servicios: 1, antes: 1, despues: 1, avisos: 1, conformidad: 1, base: 1, segun: 1, no: 1, crm: 1, tarifa: 1, lineas: 1, cobros: 1, datos: 1 };
+const SCHEMA_V = '4';
 const ARCHIVABLES = ['Servicios', 'Tiempos', 'Incidencias', 'Fotos', 'Jornadas', 'Cambios', 'Actividad'];
 
 /* ------------------------------------------------------------------ */
@@ -116,7 +122,7 @@ function doPost(e) {
   let req;
   try { req = JSON.parse(e.postData.contents); } catch (err) { return out_({ ok: false, error: 'Petición no válida.' }); }
   try {
-    const fn = ACTIONS[req.action];
+    const fn = ACTIONS[req.action] || (typeof CRM_ACTIONS !== 'undefined' ? CRM_ACTIONS[req.action] : null);
     if (!fn) throw Error('Acción desconocida.');
     if (versions_().SCHEMA_V !== SCHEMA_V) migrate_();
     const open = req.action === 'login' || req.action === 'public' || req.action === 'publicPhoto';
@@ -192,6 +198,7 @@ function migrate_() {
       bump_(name);
     });
     if (!props_().getProperty('INV_SEEDED') && sheet_('Articulos').getLastRow() < 2) seedInventario_();
+    if (typeof crmMigrate_ === 'function') crmMigrate_();
     props_().setProperty('SCHEMA_V', SCHEMA_V);
     if (_ver) _ver.SCHEMA_V = SCHEMA_V;
   } finally { l.releaseLock(); }
@@ -203,7 +210,7 @@ function migrate_() {
 
 function props_() { return PropertiesService.getScriptProperties(); }
 function iso_(d) { return (d || new Date()).toISOString(); }
-function day_(t) { return Utilities.formatDate(new Date(t), APP.zona, 'yyyy-MM-dd'); }
+function day_(t) { return Utilities.formatDate(t == null ? new Date() : new Date(t), APP.zona, 'yyyy-MM-dd'); }
 function uid_() { return Utilities.getUuid(); }
 function hex_(bytes) { return bytes.map(x => ('0' + ((x + 256) % 256).toString(16)).slice(-2)).join(''); }
 function secret_() { return (uid_() + uid_()).replace(/-/g, ''); }
@@ -403,8 +410,8 @@ function sync_(d, u) {
   services.forEach(s => ids[s.id] = 1);
   const visibleClients = clients.filter(c => c.activo !== false && canClient_(u, c));
   return {
-    me: { id: u.id, nombre: u.nombre, rol: u.rol, horas: Number(u.horas) || 0, acceso: u.acceso },
-    config: { extras: EXTRAS, tiposGeneral: TIPOS_GENERAL, tiposFoto: TIPOS_FOTO, tiposIncidencia: TIPOS_INCIDENCIA, version: APP.version },
+    me: { id: u.id, nombre: u.nombre, rol: u.rol, horas: Number(u.horas) || 0, acceso: u.acceso, email: u.email || '', telefono: u.telefono || '' },
+    config: { extras: EXTRAS, tiposGeneral: TIPOS_GENERAL, tiposFoto: TIPOS_FOTO, tiposIncidencia: TIPOS_INCIDENCIA, vehiculos: VEHICULOS, version: APP.version },
     clients: visibleClients.map(c => ({ id: c.id, nombre: c.nombre, tipo: c.tipo, protocolo: c.protocolo, tipos: c.tipos || TIPOS_GENERAL, revisor: c.revisor, contacto: u.rol === 'admin' ? c.contacto : '', telefono: u.rol === 'admin' ? c.telefono : '', email: u.rol === 'admin' ? c.email : '', avisos: c.avisos !== false, activo: c.activo !== false })),
     team: users.filter(x => x.activo || u.rol === 'admin').map(publicUser_),
     users: u.rol === 'admin' ? users.map(x => ({ id: x.id, nombre: x.nombre, rol: x.rol, acceso: x.acceso || [], horas: Number(x.horas) || 0, activo: !!x.activo, empresa: x.empresa || '' })) : [],
@@ -1114,32 +1121,24 @@ function receiptServices_(clientId, from, to, ids) {
 function receiptPdf_(client, from, to, ref, data, conf, confSig) {
   const users = read_('Usuarios'), name = id => (users.find(x => x.id === id) || {}).nombre || id;
   const fotos = read_('Fotos');
-  const logo = dataUri_(APP.logoDriveId);
-  const rows = data.services.map(s => {
+  const filas = data.services.map(s => {
     const team = Object.keys(participants_(data.times, s.id)).map(name).join(', ');
     const r = s.recibo || {};
     const firma = r.firma ? (fotos.find(f => f.id === r.firma) || {}).archivo : '';
     const sig = firma ? dataUri_(firma) : '';
-    return '<tr><td>' + fmtDate_(s.creado) + '<br><span class="m">' + fmtDate_(s.cerrado) + '</span></td><td><b>' + esc_(s.matricula || '—') + '</b>' + (s.chasis ? '<br><span class="m">' + esc_(s.chasis) + '</span>' : '') + '</td><td>' + esc_([s.marca, s.modelo].filter(Boolean).join(' ') || s.vehiculo || '—') + '</td><td>' + esc_(s.tipo) + '<br><span class="m">' + esc_(team) + '</span></td><td>' + esc_(r.signer || 'Sin firma') + '<br><span class="m">' + esc_(r.conformity || '') + (r.observations ? ' · ' + esc_(r.observations) : '') + '</span>' + (sig ? '<br><img class="sig" src="' + sig + '">' : '') + '</td></tr>';
-  }).join('');
+    return [fmtDate_(s.creado) + '<br><span class="m">Entrega ' + fmtDate_(s.cerrado) + '</span>',
+      '<b>' + esc_(s.matricula || '—') + '</b>' + (s.chasis ? '<br><span class="m">' + esc_(s.chasis) + '</span>' : ''),
+      esc_([s.vehiculo, s.marca, s.modelo].filter(Boolean).join(' · ') || '—'),
+      esc_(s.tipo) + (team ? '<br><span class="m">' + esc_(team) + '</span>' : ''),
+      esc_(r.signer || 'Sin firma') + '<br><span class="m">' + esc_(r.conformity || '') + (r.observations ? ' · ' + esc_(r.observations) : '') + '</span>' + (sig ? '<br><img class="sig" src="' + sig + '">' : '')];
+  });
   const confHtml = conf
-    ? '<div class="conf"><b>Conformidad del cliente:</b> ' + esc_(conf.conformity) + ' · ' + esc_(conf.signer) + ' · ' + Utilities.formatDate(new Date(conf.at), APP.zona, 'dd/MM/yyyy HH:mm') + ' · ' + esc_(conf.canal) + (conf.observations ? '<br><b>Observaciones:</b> ' + esc_(conf.observations) : '') + (confSig ? '<br><img class="csig" src="' + confSig + '">' : '') + '</div>'
-    : '<div class="conf pend"><b>Pendiente de conformidad del cliente.</b></div>';
-  const html = '<html><head><meta charset="utf-8"><style>' +
-    'body{font-family:Arial,Helvetica,sans-serif;color:#193545;font-size:10px;margin:28px}' +
-    '.hd{border-bottom:2px solid #ac812e;padding-bottom:10px;margin-bottom:14px}.hd img{height:58px;vertical-align:middle}' +
-    '.hd .t{display:inline-block;vertical-align:middle;margin-left:12px}.hd h1{font-size:17px;margin:0;color:#102d48}.hd p{margin:2px 0;color:#526b76}' +
-    '.meta{margin:0 0 12px;font-size:10.5px}.meta b{color:#102d48}' +
-    'table{width:100%;border-collapse:collapse}th{background:#102d48;color:#fff;text-align:left;padding:6px;font-size:9.5px}' +
-    'td{border-bottom:1px solid #d8e2e4;padding:6px;vertical-align:top}tr:nth-child(even) td{background:#f5f8f8}.m{color:#526b76;font-size:9px}' +
-    '.sig{height:30px;margin-top:3px}.ft{margin-top:16px;color:#526b76;font-size:9px;border-top:1px solid #d8e2e4;padding-top:8px}' +
-    '.conf{margin-top:14px;padding:10px 12px;border:1px solid #b9d9c7;background:#eef7f2;border-radius:6px;font-size:10.5px;line-height:1.5}.conf.pend{border-color:#ecd9a8;background:#fdf8ea}.csig{height:46px;margin-top:6px}' +
-    '</style></head><body>' +
-    '<div class="hd">' + (logo ? '<img src="' + logo + '">' : '') + '<div class="t"><h1>Albarán de servicios realizados</h1><p>Efecto Mariposa Clean &amp; Care</p></div></div>' +
-    '<p class="meta"><b>Cliente:</b> ' + esc_(client.nombre) + ' &nbsp; · &nbsp; <b>Periodo:</b> ' + fmtDate_(from + 'T12:00:00Z') + ' – ' + fmtDate_(to + 'T12:00:00Z') + ' &nbsp; · &nbsp; <b>Vehículos:</b> ' + data.services.length + ' &nbsp; · &nbsp; <b>Ref.:</b> ' + ref + '</p>' +
-    '<table><tr><th>Inicio / entrega</th><th>Matrícula / chasis</th><th>Vehículo</th><th>Servicio / equipo</th><th>Recepción y firma</th></tr>' + rows + '</table>' + confHtml +
-    '<p class="ft">Una fila por vehículo entregado. Documento sin importes económicos. Las firmas corresponden al albarán individual firmado en la entrega de cada vehículo.</p>' +
-    '</body></html>';
+    ? '<div class="bx ok"><b>Conformidad del cliente:</b> ' + esc_(conf.conformity) + ' · ' + esc_(conf.signer) + ' · ' + Utilities.formatDate(new Date(conf.at), APP.zona, 'dd/MM/yyyy HH:mm') + ' · ' + esc_(conf.canal) + (conf.observations ? '<br><b>Observaciones:</b> ' + esc_(conf.observations) : '') + (confSig ? '<br><img class="csig" src="' + confSig + '">' : '') + '</div>'
+    : '<div class="bx wa"><b>Pendiente de conformidad del cliente.</b> Puede confirmarse desde el portal del cliente o firmando en persona.</div>';
+  const html = docHtml_({ tipo: 'ALBARÁN', numero: ref, meta: [['Periodo', fmtDate_(from + 'T12:00:00Z') + ' – ' + fmtDate_(to + 'T12:00:00Z')], ['Vehículos entregados', String(data.services.length)], ['Emitido', fmtDate_(iso_())]],
+    para: { nombre: client.nombre, nif: client.nif || '', direccion: client.direccion || '' },
+    cols: ['Recepción', 'Matrícula / chasis', 'Vehículo', 'Servicio · equipo', 'Recibido y firma'], filas: filas,
+    bloques: [confHtml, '<p class="m" style="margin-top:10px">Una fila por vehículo entregado. Documento sin importes económicos. Las firmas corresponden al albarán individual firmado en la entrega de cada vehículo.</p>'] });
   const title = 'Albarán ' + client.nombre + ' ' + from + ' a ' + to;
   return { title: title, blob: Utilities.newBlob(html, MimeType.HTML, title + '.html').getAs(MimeType.PDF).setName(title + '.pdf') };
 }
@@ -1466,6 +1465,7 @@ function invMove_(d, u) {
     a.actualizado = at;
     update_('Articulos', a);
     if (['consumo', 'aviso', 'entrada', 'ajuste'].indexOf(t) >= 0) insert_('Movimientos', mv);
+    if (mv.importe && typeof accMirror_ === 'function') accMirror_(mv, u);
     return cleanArt_(a, admin);
   });
 }
@@ -1475,13 +1475,17 @@ function invGasto_(d, u) {
     if (d.borrar) {
       const m = read_('Movimientos').find(x => x.id === d.borrar && x.tipo === 'gasto');
       if (!m) fail_('Gasto no encontrado.');
-      m.tipo = 'gasto-anulado'; update_('Movimientos', m); return { ok: true };
+      m.tipo = 'gasto-anulado'; update_('Movimientos', m);
+      if (typeof accUnmirror_ === 'function') accUnmirror_(m.id);
+      return { ok: true };
     }
     const imp = Number(String(d.importe || '').replace(',', '.'));
     const concepto = clean_(d.concepto, 160);
     if (!concepto || !(imp > 0)) fail_('Indica concepto e importe.');
     const f = /^\d{4}-\d{2}-\d{2}$/.test(d.fecha) ? new Date(d.fecha + 'T12:00:00Z').toISOString() : iso_();
-    return insert_('Movimientos', { id: uid_(), fecha: f, articulo: '', tipo: 'gasto', cantidad: '', nivel: '', importe: Math.round(imp * 100) / 100, categoria: CAT_GASTO.indexOf(d.categoria) >= 0 ? d.categoria : 'Otros', concepto: concepto, servicio: '', usuario: u.id, nota: clean_(d.nota, 300) });
+    const mv = insert_('Movimientos', { id: uid_(), fecha: f, articulo: '', tipo: 'gasto', cantidad: '', nivel: '', importe: Math.round(imp * 100) / 100, categoria: CAT_GASTO.indexOf(d.categoria) >= 0 ? d.categoria : 'Otros', concepto: concepto, servicio: '', usuario: u.id, nota: clean_(d.nota, 300) });
+    if (typeof accMirror_ === 'function') accMirror_(mv, u);
+    return mv;
   });
 }
 function invPhoto_(d, u) {
