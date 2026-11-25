@@ -258,3 +258,10 @@ table.t tr.click{cursor:pointer}table.t tr.click:hover td{background:#f8fafb}
 .kpis.kpis3{grid-template-columns:repeat(3,1fr)}
 .kpis3 .kpi{cursor:default}
 @media (min-width:900px){.kpis.kpis3{grid-template-columns:repeat(3,1fr)}}
+/* Almacén */
+.ithumb{width:44px;height:44px;border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--navy);flex:none;overflow:hidden}
+.ithumb img{width:100%;height:100%;object-fit:cover}
+.ithumb.big{width:84px;height:84px;border-radius:14px}
+.irow{cursor:pointer}.irow:active{background:var(--bg)}
+.lvl{display:flex;gap:3px;justify-content:flex-end}.lvl i{width:13px;height:7px;border-radius:3px}
+.search input.in{padding-left:38px}

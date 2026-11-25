@@ -54,3 +54,11 @@ En el editor de Apps Script, ejecuta la función `restablecerPinDireccion`. El P
 3. Ve a **Implementar → Gestionar implementaciones**, pulsa el lápiz ✏️, cambia **Versión** a **Nueva versión** y pulsa **Implementar**. La dirección `/exec` no cambia.
 
 Las columnas nuevas se añaden solas a tu hoja la primera vez que alguien entra. No se borra nada.
+
+## Actualizar a la versión 2.2 (almacén y gastos)
+
+1. En Apps Script, borra `Código.gs`, pega el nuevo `servidor/Codigo.gs` y guarda.
+2. Crea un archivo nuevo (botón **+** › **Secuencia de comandos**), llámalo `Inventario` y pega dentro el archivo privado `Inventario.gs` que te pasa Claude por el chat. Ese archivo no está en GitHub porque contiene tus datos.
+3. Ve a **Implementar → Gestionar implementaciones**, pulsa el lápiz ✏️, elige **Nueva versión** y pulsa **Implementar**.
+
+La primera vez que alguien entre se crean solas las hojas del almacén con tu inventario cargado. Si el almacén aparece vacío, ejecuta la función `cargarInventarioInicial`.

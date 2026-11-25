@@ -10,7 +10,7 @@
 
 const APP = {
   nombre: 'Efecto Mariposa · Operaciones',
-  version: '2.1.0',
+  version: '2.2.0',
   appUrl: 'https://efectomariposaclean-create.github.io/em-operaciones/',
   diasEnlace: 15,          // días que el enlace del particular sigue activo tras la entrega
   zona: 'Europe/Madrid',
@@ -43,10 +43,15 @@ const SCHEMA = {
   Jornadas:   ['id', 'usuario', 'dia', 'inicio', 'fin', 'descansos', 'geo', 'auditoria'],
   Albaranes:  ['id', 'cliente', 'desde', 'hasta', 'n', 'fecha', 'archivo', 'titulo', 'servicios', 'por', 'conformidad'],
   Cambios:    ['id', 'fecha', 'usuario', 'servicio', 'motivo', 'antes', 'despues'],
-  Actividad:  ['id', 'fecha', 'usuario', 'servicio', 'accion']
+  Actividad:  ['id', 'fecha', 'usuario', 'servicio', 'accion'],
+  Articulos:  ['id', 'codigo', 'tipo', 'grupo', 'nombre', 'marca', 'funcion', 'ubicacion', 'medida', 'nivel', 'cantidad', 'unidad', 'minimo', 'estado', 'precaucion', 'notas', 'compraEstado', 'compraPrioridad', 'compraCantidad', 'compraMotivo', 'proveedor', 'enlace', 'precio', 'foto', 'mini', 'activo', 'actualizado'],
+  Movimientos:['id', 'fecha', 'articulo', 'tipo', 'cantidad', 'nivel', 'importe', 'categoria', 'concepto', 'servicio', 'usuario', 'nota'],
+  Cargas:     ['id', 'nombre', 'base', 'segun', 'no', 'orden'],
+  Ubicaciones:['id', 'ubicacion', 'seccion', 'material', 'regla']
 };
-const JSON_COLS = { tipos: 1, acceso: 1, extras: 1, grupos: 1, notas: 1, fases: 1, maquina: 1, recibo: 1, archivado: 1, resuelta: 1, descansos: 1, geo: 1, auditoria: 1, servicios: 1, antes: 1, despues: 1, avisos: 1, conformidad: 1 };
-const SCHEMA_V = '2';
+const NOCACHE = { Articulos: 1, Movimientos: 1, Cargas: 1, Ubicaciones: 1 };
+const JSON_COLS = { tipos: 1, acceso: 1, extras: 1, grupos: 1, notas: 1, fases: 1, maquina: 1, recibo: 1, archivado: 1, resuelta: 1, descansos: 1, geo: 1, auditoria: 1, servicios: 1, antes: 1, despues: 1, avisos: 1, conformidad: 1, base: 1, segun: 1, no: 1 };
+const SCHEMA_V = '3';
 const ARCHIVABLES = ['Servicios', 'Tiempos', 'Incidencias', 'Fotos', 'Jornadas', 'Cambios', 'Actividad'];
 
 /* ------------------------------------------------------------------ */
@@ -74,6 +79,7 @@ function instalar() {
   });
   const now = iso_();
   insert_('Clientes', { id: 'k2', nombre: 'Caravaning K2', tipo: 'empresa', protocolo: 'K2', tipos: TIPOS_K2, contacto: '', telefono: '', email: '', revisor: 'Inma', carpeta: '', activo: true, creado: now, avisos: true });
+  seedInventario_();
   const pin = nuevoPin_([]);
   insert_('Usuarios', { id: 'direccion', nombre: 'Enrique', rol: 'admin', pin: pinHash_(pin), acceso: [], horas: 0, activo: true, tokenV: 1, empresa: '', creado: now });
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
@@ -156,7 +162,14 @@ const ACTIONS = {
   shareLink: shareLink_,
   receiptConfirm: receiptConfirm_,
   public: public_,
-  publicPhoto: publicPhoto_
+  publicPhoto: publicPhoto_,
+  invSync: invSync_,
+  invSave: invSave_,
+  invMove: invMove_,
+  invGasto: invGasto_,
+  invPhoto: invPhoto_,
+  invFoto: invFoto_,
+  invCarga: invCarga_
 };
 
 /** Añade a las hojas las columnas nuevas de cada versión (no borra nada). */
@@ -166,11 +179,19 @@ function migrate_() {
   try {
     if (props_().getProperty('SCHEMA_V') === SCHEMA_V) return;
     Object.keys(SCHEMA).forEach(name => {
-      const sh = sheet_(name); if (!sh) return;
-      const cols = SCHEMA[name], have = sh.getLastColumn ? sh.getLastColumn() : cols.length;
-      if (have < cols.length) sh.getRange(1, have + 1, 1, cols.length - have).setValues([cols.slice(have)]).setFontWeight('bold');
+      let sh = sheet_(name);
+      const cols = SCHEMA[name];
+      if (!sh) {
+        sh = ss_().insertSheet(name);
+        sh.getRange(1, 1, 1, cols.length).setValues([cols]).setFontWeight('bold');
+        sh.setFrozenRows(1);
+      } else {
+        const have = sh.getLastColumn ? sh.getLastColumn() : cols.length;
+        if (have < cols.length) sh.getRange(1, have + 1, 1, cols.length - have).setValues([cols.slice(have)]).setFontWeight('bold');
+      }
       bump_(name);
     });
+    if (!props_().getProperty('INV_SEEDED') && sheet_('Articulos').getLastRow() < 2) seedInventario_();
     props_().setProperty('SCHEMA_V', SCHEMA_V);
     if (_ver) _ver.SCHEMA_V = SCHEMA_V;
   } finally { l.releaseLock(); }
@@ -228,6 +249,7 @@ function rowOf_(cols, o) {
 
 function read_(name, ss) {
   const cols = SCHEMA[name];
+  if (!ss && NOCACHE[name]) return readSheet_(sheet_(name), cols);
   if (!ss) {
     const ver = versions_()['V_' + name] || '0';
     const key = 't:' + name + ':' + ver;
@@ -1322,3 +1344,184 @@ function moveRows_(name, book, pick) {
   if (keep.length) sh.getRange(2, 1, keep.length, cols.length).setValues(keep);
   bump_(name);
 }
+
+/* ------------------------------------------------------------------ */
+/* Almacén: productos, material, maquinaria, compras y gastos          */
+/* ------------------------------------------------------------------ */
+
+const NIVELES = ['lleno', 'medio', 'poco', 'agotado'];
+const CAT_GASTO = ['Productos', 'Material', 'Maquinaria', 'Combustible', 'Herramientas', 'Vehículo', 'Otros'];
+function insertMany_(name, objs) {
+  if (!objs.length) return;
+  const sh = sheet_(name), cols = SCHEMA[name];
+  sh.getRange(sh.getLastRow() + 1, 1, objs.length, cols.length).setValues(objs.map(o => rowOf_(cols, o)));
+  bump_(name);
+}
+function seedData_() { return typeof SEED_INVENTARIO !== 'undefined' ? SEED_INVENTARIO : null; }
+/** Carga tu inventario inicial (archivo privado Inventario.gs). Ejecútalo una vez desde el editor si el almacén aparece vacío. */
+function cargarInventarioInicial() {
+  _ver = null; _ss = null;
+  if (read_('Articulos').length) { console.log('El almacén ya tiene artículos. No se ha cambiado nada.'); return; }
+  if (!seedData_()) { console.log('Falta el archivo Inventario.gs con tus datos.'); return; }
+  seedInventario_();
+  console.log('Inventario cargado: ' + read_('Articulos').length + ' artículos.');
+}
+function seedInventario_() {
+  const seed = seedData_(), now = iso_(), ids = {};
+  if (!seed) return;
+  insertMany_('Articulos', seed.articulos.map(a => { const id = 'a-' + a.codigo.toLowerCase(); ids[a.codigo] = id; return Object.assign({ id: id, precio: '', foto: '', mini: '', activo: true, actualizado: now }, a); }));
+  insertMany_('Movimientos', seed.movimientos.map(m => ({ id: uid_(), fecha: m.fecha, articulo: ids[m.codigo] || '', tipo: 'entrada', cantidad: m.cantidad, nivel: '', importe: m.importe, categoria: '', concepto: '', servicio: '', usuario: 'direccion', nota: m.nota })));
+  insertMany_('Cargas', seed.cargas.map((c, i) => ({ id: 'cg-' + (i + 1), nombre: c.nombre, base: c.base, segun: c.segun, no: c.no, orden: i + 1 })));
+  insertMany_('Ubicaciones', seed.ubicaciones.map((x, i) => Object.assign({ id: 'ub-' + (i + 1) }, x)));
+  props_().setProperty('INV_SEEDED', now);
+}
+function staff_(u) { if (u.rol === 'cliente') fail_('Sin permiso.'); }
+function low_(a) {
+  if (a.medida === 'nivel') return a.nivel === 'poco' || a.nivel === 'agotado';
+  if (a.cantidad === '' || a.cantidad == null) return false;
+  if (Number(a.cantidad) <= 0) return true;
+  return a.minimo !== '' && a.minimo != null && Number(a.cantidad) <= Number(a.minimo);
+}
+function cleanArt_(a, admin) {
+  const o = Object.assign({}, a);
+  o.bajo = low_(a);
+  if (!admin) { delete o.precio; delete o.enlace; delete o.proveedor; }
+  return o;
+}
+function invSync_(d, u) {
+  staff_(u);
+  const admin = u.rol === 'admin';
+  const movs = read_('Movimientos');
+  const limit = Date.now() - 400 * 864e5;
+  return {
+    articulos: read_('Articulos').filter(a => a.activo !== false && a.activo !== 'false').map(a => cleanArt_(a, admin)),
+    cargas: read_('Cargas').sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0)),
+    ubicaciones: read_('Ubicaciones'),
+    movimientos: (admin ? movs.filter(m => Date.parse(m.fecha) >= limit) : movs.filter(m => m.usuario === u.id && m.tipo !== 'gasto').slice(-60)).map(m => admin ? m : Object.assign({}, m, { importe: '' })),
+    categorias: CAT_GASTO
+  };
+}
+function invSave_(d, u) {
+  admin_(u);
+  return locked_(() => {
+    const all = read_('Articulos');
+    let a = d.id ? all.find(x => x.id === d.id) : null;
+    if (d.id && !a) fail_('Artículo no encontrado.');
+    const nombre = clean_(d.nombre, 120);
+    if (!nombre) fail_('Indica el nombre.');
+    const isNew = !a;
+    if (isNew) a = { id: 'a-' + uid_().slice(0, 8), codigo: '', foto: '', mini: '', activo: true, compraEstado: '', compraPrioridad: '', compraCantidad: '', compraMotivo: '', precio: '' };
+    a.nombre = nombre;
+    a.tipo = ['producto', 'material', 'maquina', 'consumible'].indexOf(d.tipo) >= 0 ? d.tipo : 'material';
+    ['grupo', 'marca', 'funcion', 'ubicacion', 'unidad', 'estado', 'precaucion', 'notas', 'proveedor', 'enlace', 'codigo'].forEach(k => { if (d[k] !== undefined) a[k] = clean_(d[k], k === 'enlace' ? 500 : 300); });
+    a.medida = d.medida === 'nivel' ? 'nivel' : 'cantidad';
+    if (a.medida === 'nivel') { a.nivel = NIVELES.indexOf(d.nivel) >= 0 ? d.nivel : (a.nivel || ''); a.cantidad = ''; }
+    else a.cantidad = d.cantidad === '' || d.cantidad == null ? '' : Math.max(0, Number(d.cantidad) || 0);
+    a.minimo = d.minimo === '' || d.minimo == null ? '' : Math.max(0, Number(d.minimo) || 0);
+    if (d.activo === false) a.activo = false;
+    a.actualizado = iso_();
+    if (isNew) insert_('Articulos', a); else update_('Articulos', a);
+    return cleanArt_(a, true);
+  });
+}
+function invMove_(d, u) {
+  staff_(u);
+  const admin = u.rol === 'admin';
+  return locked_(() => {
+    const a = read_('Articulos').find(x => x.id === d.id);
+    if (!a) fail_('Artículo no encontrado.');
+    const t = d.tipo, at = iso_(), mv = { id: uid_(), fecha: at, articulo: a.id, tipo: t, cantidad: '', nivel: '', importe: '', categoria: '', concepto: '', servicio: clean_(d.servicio, 60), usuario: u.id, nota: clean_(d.nota, 300) };
+    const n = Number(d.cantidad);
+    if (t === 'consumo') {
+      if (a.medida === 'nivel') { if (NIVELES.indexOf(d.nivel) < 0) fail_('Indica cómo queda el producto.'); a.nivel = d.nivel; mv.nivel = d.nivel; }
+      else { if (!(n > 0)) fail_('Indica la cantidad usada.'); a.cantidad = Math.max(0, (Number(a.cantidad) || 0) - n); mv.cantidad = n; }
+      if (low_(a) && !a.compraEstado) { a.compraEstado = 'pendiente'; a.compraMotivo = 'Stock bajo'; a.compraPrioridad = a.compraPrioridad || 'Alta'; }
+    } else if (t === 'aviso' && a.tipo === 'maquina') {
+      a.estado = 'En revisión';
+      a.notas = clean_(('Aviso de ' + u.nombre + ' (' + day_(at) + '): ' + mv.nota + '. ' + (a.notas || '')), 300);
+    } else if (t === 'aviso') {
+      if (a.compraEstado !== 'pedido') { a.compraEstado = 'pendiente'; a.compraMotivo = 'Aviso de ' + u.nombre + (mv.nota ? ': ' + mv.nota : ''); a.compraPrioridad = a.compraPrioridad || 'Alta'; }
+      if (a.medida === 'nivel' && (a.nivel === 'lleno' || a.nivel === 'medio' || !a.nivel)) a.nivel = 'poco';
+    } else {
+      if (!admin) fail_('Solo dirección.');
+      if (t === 'entrada') {
+        if (a.medida === 'nivel') { a.nivel = NIVELES.indexOf(d.nivel) >= 0 ? d.nivel : 'lleno'; mv.nivel = a.nivel; mv.cantidad = n > 0 ? n : ''; }
+        else { if (!(n > 0)) fail_('Indica la cantidad recibida.'); a.cantidad = (Number(a.cantidad) || 0) + n; mv.cantidad = n; }
+        const imp = Number(String(d.importe || '').replace(',', '.'));
+        if (imp > 0) { mv.importe = Math.round(imp * 100) / 100; mv.categoria = a.tipo === 'producto' ? 'Productos' : a.tipo === 'maquina' ? 'Maquinaria' : 'Material'; mv.concepto = a.nombre; if (n > 0) a.precio = Math.round(imp / n * 100) / 100; }
+        a.compraEstado = ''; a.compraMotivo = ''; a.compraCantidad = ''; a.compraPrioridad = '';
+      } else if (t === 'ajuste') {
+        if (a.medida === 'nivel') { if (NIVELES.indexOf(d.nivel) < 0) fail_('Indica el nivel.'); a.nivel = d.nivel; mv.nivel = d.nivel; }
+        else { if (!(n >= 0)) fail_('Indica la cantidad real.'); a.cantidad = n; mv.cantidad = n; }
+      } else if (t === 'compra') {
+        a.compraEstado = 'pendiente'; a.compraPrioridad = clean_(d.prioridad, 30) || 'Alta'; a.compraCantidad = clean_(d.cantidadTxt, 60); a.compraMotivo = clean_(d.motivo, 200);
+      } else if (t === 'pedido') {
+        a.compraEstado = 'pedido';
+      } else if (t === 'quitar') {
+        a.compraEstado = ''; a.compraMotivo = ''; a.compraCantidad = ''; a.compraPrioridad = '';
+      } else if (t === 'estado') {
+        a.estado = clean_(d.estado, 40);
+      } else fail_('Acción no válida.');
+    }
+    a.actualizado = at;
+    update_('Articulos', a);
+    if (['consumo', 'aviso', 'entrada', 'ajuste'].indexOf(t) >= 0) insert_('Movimientos', mv);
+    return cleanArt_(a, admin);
+  });
+}
+function invGasto_(d, u) {
+  admin_(u);
+  return locked_(() => {
+    if (d.borrar) {
+      const m = read_('Movimientos').find(x => x.id === d.borrar && x.tipo === 'gasto');
+      if (!m) fail_('Gasto no encontrado.');
+      m.tipo = 'gasto-anulado'; update_('Movimientos', m); return { ok: true };
+    }
+    const imp = Number(String(d.importe || '').replace(',', '.'));
+    const concepto = clean_(d.concepto, 160);
+    if (!concepto || !(imp > 0)) fail_('Indica concepto e importe.');
+    const f = /^\d{4}-\d{2}-\d{2}$/.test(d.fecha) ? new Date(d.fecha + 'T12:00:00Z').toISOString() : iso_();
+    return insert_('Movimientos', { id: uid_(), fecha: f, articulo: '', tipo: 'gasto', cantidad: '', nivel: '', importe: Math.round(imp * 100) / 100, categoria: CAT_GASTO.indexOf(d.categoria) >= 0 ? d.categoria : 'Otros', concepto: concepto, servicio: '', usuario: u.id, nota: clean_(d.nota, 300) });
+  });
+}
+function invPhoto_(d, u) {
+  staff_(u);
+  const m = String(d.data || '').match(/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/);
+  const t = String(d.thumb || '').match(/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/);
+  if (!m || m[2].length > 6000000) fail_('Imagen no válida.');
+  const folder = folderNamed_(DriveApp.getFolderById(props_().getProperty('ROOT')), 'Almacén');
+  const a0 = read_('Articulos').find(x => x.id === d.id);
+  if (!a0) fail_('Artículo no encontrado.');
+  const f = folder.createFile(Utilities.newBlob(Utilities.base64Decode(m[2]), 'image/' + m[1], (a0.codigo || a0.id) + ' ' + a0.nombre + '.jpg'));
+  const mf = t ? folderNamed_(folder, 'miniaturas').createFile(Utilities.newBlob(Utilities.base64Decode(t[2]), 'image/' + t[1], a0.id + '.jpg')) : null;
+  return locked_(() => {
+    const a = read_('Articulos').find(x => x.id === d.id);
+    a.foto = f.getId(); a.mini = mf ? mf.getId() : ''; a.actualizado = iso_();
+    update_('Articulos', a);
+    return cleanArt_(a, u.rol === 'admin');
+  });
+}
+function invFoto_(d, u) {
+  staff_(u);
+  const a = read_('Articulos').find(x => x.id === d.id);
+  if (!a || !a.foto) fail_('Sin foto.');
+  const b = DriveApp.getFileById(d.size === 'mini' && a.mini ? a.mini : a.foto).getBlob();
+  return { data: 'data:' + b.getContentType() + ';base64,' + Utilities.base64Encode(b.getBytes()) };
+}
+function invCarga_(d, u) {
+  admin_(u);
+  return locked_(() => {
+    const list = v => (Array.isArray(v) ? v : String(v || '').split('\n')).map(x => clean_(x, 160)).filter(Boolean).slice(0, 60);
+    const all = read_('Cargas');
+    let c = d.id ? all.find(x => x.id === d.id) : null;
+    if (d.borrar) { if (!c) fail_('No encontrada.'); const sh = sheet_('Cargas'); sh.deleteRow(findRow_(sh, c.id)); bump_('Cargas'); return { ok: true }; }
+    const nombre = clean_(d.nombre, 80);
+    if (!nombre) fail_('Indica el nombre.');
+    const isNew = !c;
+    if (isNew) c = { id: 'cg-' + uid_().slice(0, 6), orden: all.length + 1 };
+    c.nombre = nombre; c.base = list(d.base); c.segun = list(d.segun); c.no = list(d.no);
+    if (isNew) insert_('Cargas', c); else update_('Cargas', c);
+    return c;
+  });
+}
+

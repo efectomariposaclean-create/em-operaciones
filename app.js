@@ -3,7 +3,7 @@
 'use strict';
 
 const CFG = window.EM_CONFIG || {};
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 const ROOT = document.getElementById('root');
 
 /* ============================ Utilidades ============================ */
@@ -106,6 +106,9 @@ const ICONS = {
   mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
   chat: '<path d="m3 20 1.3-3.9A9 8 0 1 1 7.7 19L3 20"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><circle cx="12" cy="16" r="1"/><path d="M8 11V7a4 4 0 1 1 8 0v4"/>',
+  flask: '<path d="M9 3h6M10 3v6L5 18a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3L14 9V3"/><path d="M7.5 14h9"/>',
+  box: '<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m12 12 8-4.5M12 12v9M12 12 4 7.5"/>',
+  tool: '<path d="M7 10h3V7L6.5 3.5a6 6 0 0 1 8 8l6 6a2.12 2.12 0 0 1-3 3l-6-6a6 6 0 0 1-8-8z"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/>'
 };
 const icon = (n, c) => '<svg class="i ' + (c || '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[n] || '') + '</svg>';
@@ -302,6 +305,7 @@ async function sync(manual) {
     S.data = data;
     S.queue.forEach(applyLocal);
     S.lastSync = Date.now(); LS.set('lastSync', S.lastSync);
+    if (!isClient() && (!S.invAt || Date.now() - S.invAt > 300000)) { S.invAt = Date.now(); loadInv(); }
     S.online = true; S.error = '';
     persistSnap();
     render(true);
@@ -385,8 +389,8 @@ function go(path) { if (location.hash !== '#/' + path) location.hash = '#/' + pa
 window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
 
 const TABS_ADMIN = [['inicio', 'home', 'Inicio'], ['servicios', 'rv', 'Servicios'], ['incidencias', 'alert', 'Incidencias'], ['jornada', 'clock', 'Jornada'], ['mas', 'grid', 'Más']];
-const SIDE_ADMIN = [['inicio', 'home', 'Inicio'], ['servicios', 'rv', 'Servicios'], ['incidencias', 'alert', 'Incidencias'], ['jornada', 'clock', 'Mi jornada'], 'Dirección', ['horario', 'calendar', 'Control horario'], ['buscar', 'search', 'Buscar e historial'], ['albaranes', 'file', 'Albaranes'], ['equipo', 'users', 'Equipo'], ['clientes', 'building', 'Clientes'], 'Cuenta', ['ajustes', 'sliders', 'Ajustes'], ['sistema', 'shield', 'Sistema']];
-const SIDE_WORKER = [['inicio', 'home', 'Inicio'], ['servicios', 'rv', 'Servicios'], ['incidencias', 'alert', 'Incidencias'], ['jornada', 'clock', 'Mi jornada'], 'Más', ['buscar', 'history', 'Mi historial'], ['albaranes', 'file', 'Albaranes'], ['ajustes', 'sliders', 'Ajustes']];
+const SIDE_ADMIN = [['inicio', 'home', 'Inicio'], ['servicios', 'rv', 'Servicios'], ['incidencias', 'alert', 'Incidencias'], ['jornada', 'clock', 'Mi jornada'], ['almacen', 'box', 'Almacén'], 'Dirección', ['horario', 'calendar', 'Control horario'], ['buscar', 'search', 'Buscar e historial'], ['albaranes', 'file', 'Albaranes'], ['equipo', 'users', 'Equipo'], ['clientes', 'building', 'Clientes'], 'Cuenta', ['ajustes', 'sliders', 'Ajustes'], ['sistema', 'shield', 'Sistema']];
+const SIDE_WORKER = [['inicio', 'home', 'Inicio'], ['servicios', 'rv', 'Servicios'], ['incidencias', 'alert', 'Incidencias'], ['jornada', 'clock', 'Mi jornada'], ['almacen', 'box', 'Almacén'], 'Más', ['buscar', 'history', 'Mi historial'], ['albaranes', 'file', 'Albaranes'], ['ajustes', 'sliders', 'Ajustes']];
 const SIDE_CLIENT = [['inicio', 'rv', 'Mis vehículos'], ['avisos', 'alert', 'Avisos'], ['albaranes', 'file', 'Albaranes'], 'Cuenta', ['buscar', 'history', 'Historial'], ['cuenta', 'user', 'Mi cuenta']];
 const TABS_CLIENT = [['inicio', 'rv', 'Vehículos'], ['avisos', 'alert', 'Avisos'], ['albaranes', 'file', 'Albaranes'], ['cuenta', 'user', 'Cuenta']];
 
@@ -456,7 +460,7 @@ function shell() {
     const map = isClient() ? { servicio: 'inicio', historico: 'buscar' } : { servicio: 'servicios', nuevo: 'servicios', historico: 'buscar' };
     return (map[r.name] || r.name) === name;
   };
-  const activeTab = name => active(name) || (name === 'mas' && ['horario', 'buscar', 'albaranes', 'equipo', 'clientes', 'ajustes', 'sistema', 'historico'].indexOf(r.name) >= 0);
+  const activeTab = name => active(name) || (name === 'mas' && ['almacen', 'horario', 'buscar', 'albaranes', 'equipo', 'clientes', 'ajustes', 'sistema', 'historico'].indexOf(r.name) >= 0);
   return '<div class="app">' +
     '<aside class="side"><div class="brand"><img src="icons/logo-header.png" alt=""><div><b>Efecto Mariposa</b><small>Operaciones</small></div></div>' +
     side.map(x => Array.isArray(x) ? '<a href="#/' + x[0] + '" class="' + (active(x[0]) ? 'on' : '') + '">' + icon(x[1]) + x[2] + ((x[0] === 'incidencias' || x[0] === 'avisos') && inc ? '<span class="badge">' + inc + '</span>' : '') + '</a>' : '<div class="grp">' + x + '</div>').join('') +
@@ -482,7 +486,7 @@ function render(fromSync) {
   const ae = document.activeElement;
   if (fromSync && ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName) && ae.closest('main') && lastRendered === location.hash) { updateStatus(); return; }
   if (fromSync && $('.scrim')) { updateStatus(); return; }
-  if (fromSync && ['nuevo', 'ajustes', 'cuenta', 'horario', 'albaranes', 'buscar', 'equipo', 'clientes', 'sistema', 'jornada'].indexOf(r.name) >= 0 && lastRendered === location.hash) { updateStatus(); return; }
+  if (fromSync && ['nuevo', 'ajustes', 'cuenta', 'horario', 'albaranes', 'almacen', 'buscar', 'equipo', 'clientes', 'sistema', 'jornada'].indexOf(r.name) >= 0 && lastRendered === location.hash) { updateStatus(); return; }
   const y = lastRendered === location.hash ? window.scrollY : 0;
   ROOT.innerHTML = shell();
   const view = isClient() ? (CVIEWS[r.name] || CVIEWS.inicio) : (VIEWS[r.name] || VIEWS.inicio);
@@ -547,6 +551,7 @@ VIEWS.inicio = function () {
     '<div class="row between" style="margin:2px 2px 12px"><div><h1>' + greet() + ', ' + esc(m.nombre.split(' ')[0]) + '</h1><p class="muted small">' + new Date().toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'long' }) + '</p></div></div>' +
     install +
     '<div id="workChip"></div>' +
+    (S.inv && S.inv.articulos.some(a => a.compraEstado || a.bajo) ? '<div class="banner warn" style="margin-top:10px">' + icon('box') + '<span class="grow">Almacén: ' + S.inv.articulos.filter(a => a.bajo).length + ' bajo mínimo · ' + S.inv.articulos.filter(a => a.compraEstado).length + ' en la lista de compra</span><button class="btn sm" data-act="go" data-to="almacen">Ver</button></div>' : '') +
     '<div class="kpis" style="margin-top:10px">' + kpis.map(k => '<button class="kpi ' + (k[2] === 'alert' && k[1] ? 'alert' : '') + '" data-act="go" data-to="' + k[3] + '"><small>' + icon(k[2], 's') + esc(k[0]) + '</small><b>' + k[1] + '</b></button>').join('') + '</div>' +
     '<button class="btn green wide" style="margin-top:12px" data-act="go" data-to="nuevo">' + icon('plus') + 'Nuevo servicio</button>' +
     (isAdmin()
@@ -1472,6 +1477,296 @@ VIEWS.sistema = function () {
     } catch (e) { $('#sys').innerHTML = empty('alert', 'No disponible', e.message); }
   } };
 };
+
+/* ============================ Almacén ============================ */
+
+S.inv = LS.get('inv', null);
+const INV_TIPOS = { producto: ['Productos', 'flask'], material: ['Material', 'tasks'], consumible: ['Consumibles', 'box'], maquina: ['Maquinaria', 'tool'] };
+const NIVELES = ['lleno', 'medio', 'poco', 'agotado'];
+const NIVEL_TXT = { lleno: 'Lleno', medio: 'Medio', poco: 'Queda poco', agotado: 'Agotado', '': 'Sin medir' };
+const PRIOS = ['Urgente', 'Alta', 'Según trabajo', 'Posterior'];
+let invLoading = false;
+async function loadInv(force) {
+  if (invLoading) return;
+  invLoading = true;
+  try {
+    S.inv = await api('invSync', {});
+    LS.set('inv', S.inv);
+    const ae = document.activeElement;
+    if (route().name === 'almacen' && !$('.scrim') && !(ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName))) render();
+    else if (route().name === 'inicio' && !$('.scrim')) render(true);
+  } catch (e) { if (!e.auth && force) toast(e.net ? 'Sin conexión: se muestran los últimos datos.' : e.message, true); }
+  finally { invLoading = false; }
+}
+function invArt(id) { return ((S.inv && S.inv.articulos) || []).find(a => a.id === id); }
+function invReplace(a) { const l = S.inv.articulos, i = l.findIndex(x => x.id === a.id); if (i >= 0) l[i] = a; else l.push(a); LS.set('inv', S.inv); }
+function levelHtml(a) {
+  if (a.medida === 'nivel') {
+    const k = NIVELES.indexOf(a.nivel), fill = k < 0 ? 0 : 4 - k;
+    const col = k === 0 || k === 1 ? 'var(--green)' : k === 2 ? '#c28a1d' : 'var(--bad)';
+    return '<div class="lvl" title="' + esc(NIVEL_TXT[a.nivel || '']) + '">' + [0, 1, 2, 3].map(i => '<i style="background:' + (i < fill ? col : '#e2e8eb') + '"></i>').join('') + '</div><div class="tiny muted" style="text-align:right">' + esc(NIVEL_TXT[a.nivel || '']) + '</div>';
+  }
+  if (a.cantidad === '' || a.cantidad == null) return '<b class="small muted">—</b>';
+  return '<b style="font-size:15px;color:' + (a.bajo ? 'var(--bad)' : 'var(--navy)') + '">' + esc(a.cantidad) + '</b> <span class="tiny muted">' + esc(a.unidad || 'uds') + '</span>' + (a.minimo !== '' && a.minimo != null ? '<div class="tiny muted" style="text-align:right">mín. ' + esc(a.minimo) + '</div>' : '');
+}
+function invChip(a) {
+  if (a.compraEstado === 'pedido') return '<span class="chip info">Pedido</span>';
+  if (a.tipo === 'maquina' && a.estado && !/operativ/i.test(a.estado)) return '<span class="chip warn">' + esc(a.estado) + '</span>';
+  if (a.bajo) return '<span class="chip bad">' + (a.nivel === 'agotado' || Number(a.cantidad) === 0 ? 'Agotado' : 'Bajo') + '</span>';
+  if (a.compraEstado === 'pendiente') return '<span class="chip warn">En compra</span>';
+  return '';
+}
+function invThumb(a, big) {
+  const src = a.mini && S.thumbs['inv:' + a.mini];
+  return '<div class="ithumb' + (big ? ' big' : '') + '" data-ith="' + esc(a.id) + '" data-mini="' + esc(a.mini || '') + '">' + (src ? '<img src="' + src + '" alt="">' : icon((INV_TIPOS[a.tipo] || INV_TIPOS.material)[1], big ? 'l' : '')) + '</div>';
+}
+function loadInvThumbs(root) {
+  $$('[data-ith]', root).forEach(el => {
+    const mini = el.dataset.mini; if (!mini || S.thumbs['inv:' + mini] || el.dataset.l) return;
+    el.dataset.l = '1';
+    (async () => {
+      try {
+        let v = await IDB.tget('inv:' + mini);
+        if (!v) { v = (await api('invFoto', { id: el.dataset.ith, size: 'mini' }, 60000)).data; IDB.tput('inv:' + mini, v); }
+        S.thumbs['inv:' + mini] = v;
+        $$('[data-mini="' + mini + '"]').forEach(x => { x.innerHTML = '<img src="' + v + '" alt="">'; });
+      } catch (e) {}
+    })();
+  });
+}
+function invRow(a) {
+  return '<div class="li irow" data-art="' + esc(a.id) + '">' + invThumb(a) + '<div class="grow" style="min-width:0"><b class="ellipsis" style="display:block;font-size:14.5px">' + esc(a.nombre) + '</b><div class="small muted ellipsis">' + esc([a.marca, a.ubicacion].filter(Boolean).join(' · ') || (INV_TIPOS[a.tipo] || [''])[0]) + '</div></div><div style="text-align:right;min-width:84px">' + levelHtml(a) + '</div>' + (invChip(a) && !(a.medida === 'nivel' && a.bajo && !a.compraEstado) ? '<div style="min-width:64px;text-align:right">' + invChip(a) + '</div>' : '') + '</div>';
+}
+function monthKey(v) { return madridDay(v).slice(0, 7); }
+function money(n) { return (Math.round(n * 100) / 100).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }); }
+
+VIEWS.almacen = function () {
+  if (!S.inv) return { title: 'Almacén', back: isAdmin(), html: '<div class="card empty">Cargando el almacén…</div>', mount: () => loadInv(true) };
+  const tab = S.ui.invTab || 'stock', arts = S.inv.articulos;
+  const falta = arts.filter(a => a.bajo).length, compra = arts.filter(a => a.compraEstado).length;
+  const tabs = [['stock', 'Stock'], ['compras', 'Compras' + (compra ? ' (' + compra + ')' : '')], ['cargas', 'Llevar']].concat(isAdmin() ? [['gastos', 'Gastos']] : []);
+  let body = '';
+  if (tab === 'stock') body = invStockHtml();
+  if (tab === 'compras') body = invComprasHtml();
+  if (tab === 'cargas') body = invCargasHtml();
+  if (tab === 'gastos' && isAdmin()) body = invGastosHtml();
+  const mes = monthKey();
+  const gastoMes = isAdmin() ? (S.inv.movimientos || []).filter(m => m.importe && (m.tipo === 'gasto' || m.tipo === 'entrada') && monthKey(m.fecha) === mes).reduce((n, m) => n + Number(m.importe), 0) : 0;
+  const html = '<div class="kpis' + (isAdmin() ? '' : ' kpis3') + '"><button class="kpi" data-it="stock"><small>' + icon('box', 's') + 'Artículos</small><b>' + arts.length + '</b></button><button class="kpi ' + (falta ? 'alert' : '') + '" data-it="stock" data-only="1"><small>' + icon('alert', 's') + 'Bajo mínimo</small><b>' + falta + '</b></button><button class="kpi" data-it="compras"><small>' + icon('file', 's') + 'Por comprar</small><b>' + compra + '</b></button>' + (isAdmin() ? '<button class="kpi" data-it="gastos"><small>' + icon('calendar', 's') + 'Gasto este mes</small><b style="font-size:19px">' + money(gastoMes) + '</b></button>' : '') + '</div>' +
+    '<div class="seg" style="margin:12px 0">' + tabs.map(t => '<button class="' + (tab === t[0] ? 'on' : '') + '" data-it="' + t[0] + '">' + esc(t[1]) + '</button>').join('') + '</div>' + body;
+  return { title: 'Almacén', back: false, html: html, mount: el => mountInv(el) };
+};
+function invStockHtml() {
+  const q = norm(S.ui.invQ || ''), tipo = S.ui.invTipo || '', only = !!S.ui.invOnly;
+  let list = S.inv.articulos.filter(a => (!tipo || a.tipo === tipo) && (!only || a.bajo || a.compraEstado) && (!q || norm(a.nombre + a.marca + a.ubicacion + a.funcion + a.codigo).indexOf(q) >= 0));
+  const order = ['producto', 'consumible', 'material', 'maquina'];
+  const groups = order.map(t => [t, list.filter(a => a.tipo === t).sort((x, y) => (y.bajo - x.bajo) || x.nombre.localeCompare(y.nombre, 'es'))]).filter(g => g[1].length);
+  return '<div class="row" style="gap:8px"><div class="search grow">' + icon('search', 's') + '<input class="in" id="iq" placeholder="Buscar producto, material o máquina" value="' + esc(S.ui.invQ || '') + '" autocomplete="off"></div>' + (isAdmin() ? '<button class="btn green" id="inew" aria-label="Nuevo artículo">' + icon('plus') + '<span class="hide-m">Nuevo</span></button>' : '') + '</div>' +
+    '<div class="chips" style="margin-top:10px"><button class="' + (!tipo ? 'on' : '') + '" data-tp="">Todo</button>' + order.map(t => '<button class="' + (tipo === t ? 'on' : '') + '" data-tp="' + t + '">' + INV_TIPOS[t][0] + '</button>').join('') + '<button class="' + (only ? 'on' : '') + '" id="ionly">' + icon('alert', 's') + ' Lo que falta</button></div>' +
+    (groups.length ? groups.map(g => '<div class="sec"><h2>' + INV_TIPOS[g[0]][0] + ' · ' + g[1].length + '</h2></div><div class="card list" style="padding:2px 14px">' + g[1].map(invRow).join('') + '</div>').join('') : empty('search', 'Nada que mostrar', only ? 'No falta nada. ¡Todo en orden!' : 'Prueba con otra búsqueda.')) +
+    '<p class="tiny muted" style="text-align:center;margin-top:12px">Toca un artículo para registrar lo que usas o avisar de que se acaba.</p>';
+}
+function invComprasHtml() {
+  const list = S.inv.articulos.filter(a => a.compraEstado);
+  if (!list.length) return empty('check', 'Lista de compra vacía', 'Cuando algo baje del mínimo o alguien avise de que se acaba, aparecerá aquí.');
+  const pr = a => { const i = PRIOS.findIndex(p => norm(p) === norm(a.compraPrioridad)); return i < 0 ? 9 : i; };
+  const groups = [['pendiente', 'Por pedir'], ['pedido', 'Pedido, pendiente de recibir']].map(g => [g[1], list.filter(a => a.compraEstado === g[0]).sort((x, y) => pr(x) - pr(y))]).filter(g => g[1].length);
+  return (isAdmin() ? '<button class="btn ghost wide" id="iaddbuy">' + icon('plus', 's') + 'Añadir a la compra</button>' : '') +
+    groups.map(g => '<div class="sec"><h2>' + g[0] + ' · ' + g[1].length + '</h2></div><div class="cols">' + g[1].map(a => '<div class="card"><div class="row" style="align-items:flex-start">' + invThumb(a) + '<div class="grow" style="min-width:0"><div class="row between"><b class="ellipsis">' + esc(a.nombre) + '</b>' + (a.compraPrioridad ? '<span class="chip ' + (/urgente/i.test(a.compraPrioridad) ? 'bad' : /alta/i.test(a.compraPrioridad) ? 'warn' : '') + '">' + esc(a.compraPrioridad) + '</span>' : '') + '</div><div class="small muted">' + esc([a.compraCantidad, a.compraMotivo].filter(Boolean).join(' · ') || 'Reponer') + '</div>' + (isAdmin() && (a.proveedor || a.enlace) ? '<div class="small" style="margin-top:3px">' + esc(a.proveedor || '') + (a.enlace ? ' <a href="' + esc(a.enlace) + '" target="_blank" rel="noopener">Ver tienda ' + icon('chev', 's') + '</a>' : '') + '</div>' : '') + '</div></div>' +
+      (isAdmin() ? '<div class="row" style="gap:6px;margin-top:10px">' + (a.compraEstado === 'pendiente' ? '<button class="btn sm soft" data-bp="' + esc(a.id) + '">Marcar pedido</button>' : '') + '<button class="btn sm green" data-br="' + esc(a.id) + '">' + icon('check', 's') + 'Recibido</button><button class="btn sm ghost" data-bq="' + esc(a.id) + '">Quitar</button></div>' : '') + '</div>').join('') + '</div>').join('');
+}
+function cargaKey(id) { return 'carga:' + id + ':' + madridDay(); }
+function invCargasHtml() {
+  const cs = S.inv.cargas || [];
+  return '<p class="small muted" style="margin:0 2px 10px">Marca lo que cargas antes de salir. Las marcas se reinician cada día.</p>' + (isAdmin() ? '<button class="btn ghost wide" style="margin-bottom:10px" data-cg="">' + icon('plus', 's') + 'Nueva lista de carga</button>' : '') +
+    '<div class="cols">' + cs.map(c => {
+      const done = LS.get(cargaKey(c.id), {});
+      const n = (c.base || []).length, k = (c.base || []).filter((x, i) => done[i]).length;
+      return '<div class="card"><div class="row between"><h2>' + esc(c.nombre) + '</h2><span class="row" style="gap:6px"><span class="small ' + (n && k === n ? '' : 'muted') + '" style="' + (n && k === n ? 'color:var(--green);font-weight:650' : '') + '">' + k + '/' + n + '</span>' + (isAdmin() ? '<button class="iconbtn" data-cg="' + esc(c.id) + '" aria-label="Editar">' + icon('edit', 's') + '</button>' : '') + '</span></div>' +
+        '<p class="tiny muted" style="margin:8px 0 2px;font-weight:650;text-transform:uppercase;letter-spacing:.05em">Llevar siempre</p>' + (c.base || []).map((x, i) => '<label class="check" style="padding:6px 0"><input type="checkbox" data-ck="' + esc(c.id) + '" data-i="' + i + '" ' + (done[i] ? 'checked' : '') + '> <span>' + esc(x) + '</span></label>').join('') +
+        ((c.segun || []).length ? '<p class="tiny muted" style="margin:10px 0 4px;font-weight:650;text-transform:uppercase;letter-spacing:.05em">Según el trabajo</p><ul class="small" style="margin:0;padding-left:18px">' + c.segun.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '') +
+        ((c.no || []).length ? '<p class="tiny" style="margin:10px 0 4px;font-weight:650;text-transform:uppercase;letter-spacing:.05em;color:var(--bad)">No llevar por defecto</p><ul class="small muted" style="margin:0;padding-left:18px">' + c.no.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '') + '</div>';
+    }).join('') + '</div>' +
+    ((S.inv.ubicaciones || []).length ? '<details class="card" style="margin-top:12px"><summary style="cursor:pointer;font-weight:650">' + icon('pin', 's') + ' Dónde se guarda cada cosa</summary><table class="t" style="margin-top:8px"><tr><th>Lugar</th><th>Contenido</th></tr>' + S.inv.ubicaciones.map(u => '<tr><td><b>' + esc(u.ubicacion) + '</b><div class="tiny muted">' + esc(u.seccion) + '</div></td><td>' + esc(u.material) + '<div class="tiny muted">' + esc(u.regla) + '</div></td></tr>').join('') + '</table></details>' : '');
+}
+function invGastosHtml() {
+  const m = S.ui.invMes || monthKey();
+  const movs = (S.inv.movimientos || []).filter(x => x.importe && (x.tipo === 'gasto' || x.tipo === 'entrada') && monthKey(x.fecha) === m).sort((a, b) => Date.parse(b.fecha) - Date.parse(a.fecha));
+  const total = movs.reduce((n, x) => n + Number(x.importe), 0);
+  const cats = {};
+  movs.forEach(x => { const c = x.categoria || 'Otros'; cats[c] = (cats[c] || 0) + Number(x.importe); });
+  const max = Math.max(1, ...Object.values(cats));
+  const label = new Date(m + '-15T12:00:00Z').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+  return '<div class="card"><div class="row between"><button class="iconbtn" data-mes="-1" aria-label="Mes anterior">' + icon('back') + '</button><div style="text-align:center"><div class="small muted" style="text-transform:capitalize">' + esc(label) + '</div><b style="font-size:24px;color:var(--navy)">' + money(total) + '</b></div><button class="iconbtn" data-mes="1" aria-label="Mes siguiente">' + icon('chev') + '</button></div>' +
+    (Object.keys(cats).length ? '<div style="margin-top:12px">' + Object.keys(cats).sort((a, b) => cats[b] - cats[a]).map(c => '<div style="margin-top:8px"><div class="row between small"><span>' + esc(c) + '</span><b>' + money(cats[c]) + '</b></div><div class="bar-st" style="margin-top:4px"><i style="width:' + Math.round(100 * cats[c] / max) + '%;background:var(--green)"></i></div></div>').join('') + '</div>' : '') + '</div>' +
+    '<button class="btn green wide" style="margin-top:10px" id="igasto">' + icon('plus') + 'Añadir gasto</button>' +
+    '<div class="sec"><h2>Movimientos del mes</h2><button class="link" id="icsv">' + icon('download', 's') + ' CSV</button></div><div class="card list" style="padding:2px 14px">' + (movs.length ? movs.map(x => '<div class="li"><div class="grow"><b style="font-size:14px">' + esc(x.concepto || (invArt(x.articulo) || {}).nombre || 'Compra') + '</b><div class="small muted">' + esc(fDate(x.fecha)) + ' · ' + esc(x.categoria || 'Otros') + (x.tipo === 'entrada' ? ' · compra de almacén' : '') + (x.nota ? ' · ' + esc(x.nota) : '') + '</div></div><b>' + money(Number(x.importe)) + '</b>' + (x.tipo === 'gasto' ? '<button class="iconbtn" data-gdel="' + esc(x.id) + '" aria-label="Anular">' + icon('trash', 's') + '</button>' : '') + '</div>').join('') : '<p class="muted small" style="padding:10px 0">Sin gastos este mes. Las compras recibidas en el almacén con importe aparecen aquí solas.</p>') + '</div>';
+}
+
+function mountInv(el) {
+  loadInvThumbs(el);
+  if (!S.invFresh || Date.now() - S.invFresh > 20000) { S.invFresh = Date.now(); loadInv(); }
+  $$('[data-it]', el).forEach(b => b.onclick = () => { S.ui.invTab = b.dataset.it; if (b.dataset.only) S.ui.invOnly = true; saveUi(); render(); });
+  $$('[data-tp]', el).forEach(b => b.onclick = () => { S.ui.invTipo = b.dataset.tp; saveUi(); render(); });
+  const on = $('#ionly'); if (on) on.onclick = () => { S.ui.invOnly = !S.ui.invOnly; saveUi(); render(); };
+  const qi = $('#iq');
+  if (qi) { let t; qi.oninput = () => { clearTimeout(t); t = setTimeout(() => { S.ui.invQ = qi.value; saveUi(); const p = qi.selectionStart; render(); const n = $('#iq'); n.focus(); n.setSelectionRange(p, p); }, 250); }; }
+  const nw = $('#inew'); if (nw) nw.onclick = () => editArt(null);
+  $$('[data-art]', el).forEach(r => r.onclick = () => artSheet(invArt(r.dataset.art)));
+  $$('[data-bp]', el).forEach(b => b.onclick = () => invDo(b.dataset.bp, { tipo: 'pedido' }, 'Marcado como pedido'));
+  $$('[data-bq]', el).forEach(b => b.onclick = () => invDo(b.dataset.bq, { tipo: 'quitar' }, 'Quitado de la compra'));
+  $$('[data-br]', el).forEach(b => b.onclick = () => entradaSheet(invArt(b.dataset.br)));
+  const ab = $('#iaddbuy'); if (ab) ab.onclick = () => pickArt(a => compraSheet(a));
+  $$('[data-ck]', el).forEach(c => c.onchange = () => { const k = cargaKey(c.dataset.ck), v = LS.get(k, {}); v[c.dataset.i] = c.checked; LS.set(k, v); render(); });
+  $$('[data-cg]', el).forEach(b => b.onclick = () => editCarga((S.inv.cargas || []).find(c => c.id === b.dataset.cg) || null));
+  $$('[data-mes]', el).forEach(b => b.onclick = () => { const m = S.ui.invMes || monthKey(); const d = new Date(m + '-15T12:00:00Z'); d.setUTCMonth(d.getUTCMonth() + Number(b.dataset.mes)); S.ui.invMes = d.toISOString().slice(0, 7); saveUi(); render(); });
+  const g = $('#igasto'); if (g) g.onclick = gastoSheet;
+  $$('[data-gdel]', el).forEach(b => b.onclick = async () => { if (await confirmSheet('Anular gasto', 'El gasto dejará de contar en el total.', 'Anular', true)) { if (await command(() => api('invGasto', { borrar: b.dataset.gdel }), 'Gasto anulado')) loadInv(true); } });
+  const csv = $('#icsv'); if (csv) csv.onclick = () => {
+    const m = S.ui.invMes || monthKey();
+    const rows = [['Fecha', 'Concepto', 'Categoría', 'Importe', 'Nota']].concat((S.inv.movimientos || []).filter(x => x.importe && (x.tipo === 'gasto' || x.tipo === 'entrada') && monthKey(x.fecha) === m).map(x => [madridDay(x.fecha), x.concepto || (invArt(x.articulo) || {}).nombre || '', x.categoria || '', String(x.importe).replace('.', ','), x.nota || '']));
+    download('gastos-' + m + '.csv', new Blob(['﻿' + rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+  };
+}
+async function invDo(id, body, okMsg) {
+  let r;
+  if (await command(async () => { r = await api('invMove', Object.assign({ id: id }, body)); }, okMsg)) { invReplace(r); render(); return r; }
+  return null;
+}
+function artSheet(a) {
+  if (!a) return;
+  const adm = isAdmin();
+  const hist = (S.inv.movimientos || []).filter(m => m.articulo === a.id).slice(-6).reverse();
+  sheet(a.nombre, '<div class="row" style="gap:12px;align-items:flex-start">' + invThumb(a, true) + '<div class="grow"><div class="small muted">' + esc([(INV_TIPOS[a.tipo] || [''])[0], a.marca, a.codigo].filter(Boolean).join(' · ')) + '</div>' + (a.funcion ? '<p style="margin-top:4px">' + esc(a.funcion) + '</p>' : '') + '<div class="row" style="gap:8px;margin-top:6px">' + invChip(a) + (a.ubicacion ? '<span class="small muted">' + icon('pin', 's') + ' ' + esc(a.ubicacion) + '</span>' : '') + '</div></div><div style="min-width:80px;text-align:right">' + levelHtml(a) + '</div></div>' +
+    (a.precaucion ? '<div class="banner warn" style="margin-top:12px">' + icon('alert') + '<span class="small">' + esc(a.precaucion) + '</span></div>' : '') +
+    (a.notas ? '<p class="small muted" style="margin-top:10px">' + esc(a.notas) + '</p>' : '') +
+    (a.compraEstado ? '<p class="small" style="margin-top:10px;color:var(--warn)">' + icon('file', 's') + ' En la lista de compra' + (a.compraMotivo ? ': ' + esc(a.compraMotivo) : '') + '</p>' : '') +
+    (a.tipo === 'maquina' ? '<button class="btn ghost wide" style="margin-top:14px" data-a="warn">' + icon('alert', 's') + 'Avisar de un problema</button>' : '<div class="two" style="margin-top:14px"><button class="btn green" data-a="use">' + icon('check', 's') + 'He usado</button><button class="btn ghost" data-a="warn">' + icon('alert', 's') + 'Se está acabando</button></div>') +
+    '<button class="btn soft wide" style="margin-top:8px" data-a="photo">' + icon('camera', 's') + (a.foto ? 'Cambiar foto' : 'Añadir foto') + '</button>' +
+    (adm ? '<div class="sec"><h2>Dirección</h2></div><div class="two"><button class="btn ghost" data-a="in">' + icon('download', 's') + 'Entrada / compra</button><button class="btn ghost" data-a="adj">' + icon('sliders', 's') + 'Ajustar stock</button></div><div class="two" style="margin-top:8px"><button class="btn ghost" data-a="buy">' + icon('file', 's') + (a.compraEstado ? 'Editar compra' : 'Añadir a la compra') + '</button><button class="btn ghost" data-a="edit">' + icon('edit', 's') + 'Editar ficha</button></div>' +
+      (a.tipo === 'maquina' ? '<label class="f">Estado de la máquina</label><div class="chips">' + ['Operativa', 'En revisión', 'Averiada', 'Prestada'].map(x => '<button type="button" data-est="' + x + '" class="' + (norm(a.estado) === norm(x) ? 'on' : '') + '">' + x + '</button>').join('') + '</div>' : '') +
+      (a.precio ? '<p class="small muted" style="margin-top:10px">Último precio: ' + money(Number(a.precio)) + (a.medida === 'cantidad' ? ' / ' + esc(a.unidad || 'ud') : '') + '</p>' : '') : '') +
+    (hist.length ? '<div class="sec"><h2>Últimos movimientos</h2></div><div class="list">' + hist.map(m => '<div class="li" style="padding:7px 0"><div class="grow small"><b>' + esc({ consumo: 'Uso', aviso: 'Aviso', entrada: 'Entrada', ajuste: 'Ajuste' }[m.tipo] || m.tipo) + '</b> · ' + esc(m.nivel ? NIVEL_TXT[m.nivel] : (m.cantidad !== '' ? m.cantidad + ' ' + (a.unidad || '') : '')) + (m.nota ? ' · ' + esc(m.nota) : '') + '<div class="tiny muted">' + esc(D.userName(m.usuario)) + ' · ' + esc(fRel(m.fecha)) + '</div></div>' + (m.importe ? '<b class="small">' + money(Number(m.importe)) + '</b>' : '') + '</div>').join('') + '</div>' : ''), (el, close) => {
+    loadInvThumbs(el);
+    const act = { use: () => useSheet(a), warn: () => warnSheet(a), in: () => entradaSheet(a), adj: () => ajusteSheet(a), buy: () => compraSheet(a), edit: () => editArt(a), photo: () => artPhoto(a) };
+    $$('[data-a]', el).forEach(b => b.onclick = () => { close(); act[b.dataset.a](); });
+    $$('[data-est]', el).forEach(b => b.onclick = async () => { close(); await invDo(a.id, { tipo: 'estado', estado: b.dataset.est }, 'Estado actualizado'); });
+  });
+}
+function levelPicker(cur) { return '<div class="seg" id="lv">' + NIVELES.map(n => '<button type="button" data-lv="' + n + '" class="' + (cur === n ? 'on' : '') + '">' + NIVEL_TXT[n] + '</button>').join('') + '</div>'; }
+function mountLevel(el, start) { let v = start; $$('[data-lv]', el).forEach(b => b.onclick = () => { v = b.dataset.lv; $$('[data-lv]', el).forEach(x => x.classList.toggle('on', x === b)); }); return () => v; }
+function useSheet(a) {
+  const mine = D.open().filter(s => D.mine(s));
+  sheet('He usado · ' + a.nombre, (a.medida === 'nivel' ? '<label class="f" style="margin-top:0">¿Cómo queda?</label>' + levelPicker(a.nivel) : '<label class="f" style="margin-top:0">Cantidad usada (' + esc(a.unidad || 'uds') + ')</label><input class="in" id="uq" type="number" min="1" inputmode="numeric" value="1">') +
+    (mine.length ? '<label class="f">Vehículo (opcional)</label><select class="in" id="us"><option value="">Sin vincular</option>' + mine.map(s => '<option value="' + esc(s.id) + '">' + esc(s.matricula || s.chasis) + ' · ' + esc(D.client(s.cliente).nombre) + '</option>').join('') + '</select>' : '') +
+    '<div class="actions"><button class="btn ghost" data-c>Cancelar</button><button class="btn green" id="ugo">Guardar</button></div>', (el, close) => {
+    const lv = a.medida === 'nivel' ? mountLevel(el, a.nivel) : null;
+    el.querySelector('[data-c]').onclick = close;
+    $('#ugo').onclick = async () => {
+      const body = { tipo: 'consumo', servicio: $('#us') ? $('#us').value : '' };
+      if (lv) { body.nivel = lv(); if (!body.nivel) return toast('Elige cómo queda.', true); } else { body.cantidad = Number($('#uq').value); if (!(body.cantidad > 0)) return toast('Indica la cantidad.', true); }
+      close(); const r = await invDo(a.id, body, 'Registrado');
+      if (r && r.compraEstado === 'pendiente' && !a.compraEstado) toast('Registrado. Queda poco: añadido a la lista de compra.');
+    };
+  });
+}
+function warnSheet(a) {
+  const maq = a.tipo === 'maquina';
+  sheet(maq ? 'Avisar de un problema' : 'Se está acabando', '<p class="muted">' + esc(a.nombre) + (maq ? ' quedará marcada «En revisión» y dirección lo verá.' : ' pasará a la lista de compra y dirección lo verá.') + '</p><label class="f">' + (maq ? '¿Qué le pasa?' : 'Comentario (opcional)') + '</label><input class="in" id="wn" placeholder="' + (maq ? 'Por ejemplo: pierde presión' : 'Por ejemplo: queda para 2 servicios') + '"><div class="actions"><button class="btn ghost" data-c>Cancelar</button><button class="btn" id="wgo">Avisar</button></div>', (el, close) => {
+    el.querySelector('[data-c]').onclick = close;
+    $('#wgo').onclick = () => { const n = $('#wn').value; if (maq && !n.trim()) return toast('Cuenta brevemente qué le pasa.', true); close(); invDo(a.id, { tipo: 'aviso', nota: n }, 'Aviso enviado. Gracias.'); };
+  });
+}
+function entradaSheet(a) {
+  if (!a) return;
+  sheet('Entrada · ' + a.nombre, (a.medida === 'nivel' ? '<label class="f" style="margin-top:0">¿Cómo queda?</label>' + levelPicker('lleno') + '<label class="f">Unidades compradas (opcional)</label><input class="in" id="eq" type="number" min="0" inputmode="numeric">' : '<label class="f" style="margin-top:0">Cantidad recibida (' + esc(a.unidad || 'uds') + ')</label><input class="in" id="eq" type="number" min="1" inputmode="numeric" value="1">') +
+    '<label class="f">Importe total (€, opcional)</label><input class="in" id="ei" inputmode="decimal" placeholder="0,00"><p class="tiny muted" style="margin-top:6px">Si pones el importe, contará en los gastos del mes. La compra sale de la lista.</p>' +
+    '<div class="actions"><button class="btn ghost" data-c>Cancelar</button><button class="btn green" id="ego">Registrar entrada</button></div>', (el, close) => {
+    const lv = a.medida === 'nivel' ? mountLevel(el, 'lleno') : null;
+    el.querySelector('[data-c]').onclick = close;
+    $('#ego').onclick = () => { const body = { tipo: 'entrada', cantidad: Number($('#eq').value) || 0, importe: $('#ei').value }; if (lv) body.nivel = lv(); else if (!(body.cantidad > 0)) return toast('Indica la cantidad.', true); close(); invDo(a.id, body, 'Entrada registrada').then(r => { if (r && body.importe) loadInv(); }); };
+  });
+}
+function ajusteSheet(a) {
+  sheet('Ajustar stock · ' + a.nombre, (a.medida === 'nivel' ? '<label class="f" style="margin-top:0">Nivel real</label>' + levelPicker(a.nivel) : '<label class="f" style="margin-top:0">Cantidad real contada (' + esc(a.unidad || 'uds') + ')</label><input class="in" id="aq" type="number" min="0" inputmode="numeric" value="' + esc(a.cantidad) + '">') +
+    '<label class="f">Motivo (opcional)</label><input class="in" id="an" placeholder="Recuento, rotura, pérdida…"><div class="actions"><button class="btn ghost" data-c>Cancelar</button><button class="btn" id="ago2">Guardar</button></div>', (el, close) => {
+    const lv = a.medida === 'nivel' ? mountLevel(el, a.nivel) : null;
+    el.querySelector('[data-c]').onclick = close;
+    $('#ago2').onclick = () => { const body = { tipo: 'ajuste', nota: $('#an').value }; if (lv) { body.nivel = lv(); if (!body.nivel) return toast('Elige el nivel.', true); } else body.cantidad = Number($('#aq').value); close(); invDo(a.id, body, 'Stock ajustado'); };
+  });
+}
+function compraSheet(a) {
+  sheet('Lista de compra · ' + a.nombre, '<label class="f" style="margin-top:0">Prioridad</label><div class="chips" id="cpr">' + PRIOS.map(p => '<button type="button" data-p="' + p + '" class="' + (norm(a.compraPrioridad || 'Alta') === norm(p) ? 'on' : '') + '">' + p + '</button>').join('') + '</div>' +
+    '<label class="f">Cantidad a comprar</label><input class="in" id="cq" value="' + esc(a.compraCantidad) + '" placeholder="Ej.: 2 garrafas de 5 L"><label class="f">Motivo</label><input class="in" id="cm" value="' + esc(a.compraMotivo) + '" placeholder="Ej.: para IFEMA">' +
+    '<div class="actions">' + (a.compraEstado ? '<button class="btn ghost" id="cdel">Quitar</button>' : '<button class="btn ghost" data-c>Cancelar</button>') + '<button class="btn" id="cgo">Guardar</button></div>', (el, close) => {
+    let p = a.compraPrioridad || 'Alta';
+    $$('[data-p]', el).forEach(b => b.onclick = () => { p = b.dataset.p; $$('[data-p]', el).forEach(x => x.classList.toggle('on', x === b)); });
+    const c = el.querySelector('[data-c]'); if (c) c.onclick = close;
+    const d = $('#cdel'); if (d) d.onclick = () => { close(); invDo(a.id, { tipo: 'quitar' }, 'Quitado de la compra'); };
+    $('#cgo').onclick = () => { const body = { tipo: 'compra', prioridad: p, cantidadTxt: $('#cq').value, motivo: $('#cm').value }; close(); invDo(a.id, body, 'Añadido a la compra'); };
+  });
+}
+function pickArt(cb) {
+  sheet('¿Qué hay que comprar?', '<div class="search">' + icon('search', 's') + '<input class="in" id="pq" placeholder="Buscar en el almacén" autocomplete="off"></div><div class="list" id="pl" style="margin-top:6px;max-height:50vh;overflow:auto"></div><button class="btn ghost wide" style="margin-top:10px" id="pnew">' + icon('plus', 's') + 'Es algo nuevo: crear artículo</button>', (el, close) => {
+    const draw = () => { const q = norm($('#pq').value); $('#pl').innerHTML = S.inv.articulos.filter(a => !q || norm(a.nombre + a.marca).indexOf(q) >= 0).slice(0, 40).map(a => '<div class="li" data-pk="' + esc(a.id) + '" style="cursor:pointer">' + invThumb(a) + '<b class="grow" style="font-size:14px">' + esc(a.nombre) + '</b>' + invChip(a) + '</div>').join(''); $$('[data-pk]', el).forEach(r => r.onclick = () => { close(); cb(invArt(r.dataset.pk)); }); };
+    $('#pq').oninput = draw; draw();
+    $('#pnew').onclick = () => { close(); editArt(null, true); };
+  });
+}
+function editArt(a, toBuy) {
+  const st = a ? Object.assign({}, a) : { tipo: 'producto', medida: 'nivel', nivel: '', cantidad: '', minimo: '', unidad: 'uds' };
+  sheet(a ? 'Editar ficha' : 'Nuevo artículo', '<label class="f" style="margin-top:0">Nombre</label><input class="in" id="fn" value="' + esc(st.nombre || '') + '">' +
+    '<label class="f">Tipo</label><div class="seg" id="ft">' + Object.keys(INV_TIPOS).map(t => '<button type="button" data-t="' + t + '" class="' + (st.tipo === t ? 'on' : '') + '">' + INV_TIPOS[t][0] + '</button>').join('') + '</div>' +
+    '<div class="two"><div><label class="f">Marca</label><input class="in" id="fm" value="' + esc(st.marca || '') + '"></div><div><label class="f">Ubicación</label><input class="in" id="fu" value="' + esc(st.ubicacion || '') + '"></div></div>' +
+    '<label class="f">Para qué se usa</label><input class="in" id="ff" value="' + esc(st.funcion || '') + '">' +
+    '<label class="f">Cómo se controla</label><div class="seg" id="fmd"><button type="button" data-md="nivel" class="' + (st.medida === 'nivel' ? 'on' : '') + '">Por nivel</button><button type="button" data-md="cantidad" class="' + (st.medida !== 'nivel' ? 'on' : '') + '">Por cantidad</button></div>' +
+    '<div id="fcant" ' + (st.medida === 'nivel' ? 'hidden' : '') + '><div class="two"><div><label class="f">Cantidad</label><input class="in" id="fq" type="number" min="0" value="' + esc(st.cantidad) + '"></div><div><label class="f">Unidad</label><input class="in" id="fun" value="' + esc(st.unidad || 'uds') + '"></div></div><label class="f">Mínimo (avisa al llegar aquí)</label><input class="in" id="fmin" type="number" min="0" value="' + esc(st.minimo) + '"></div>' +
+    '<div id="fniv" ' + (st.medida === 'nivel' ? '' : 'hidden') + '><label class="f">Nivel actual</label>' + levelPicker(st.nivel) + '</div>' +
+    '<label class="f">Precaución de uso</label><textarea class="in" id="fp" style="min-height:60px">' + esc(st.precaucion || '') + '</textarea>' +
+    '<div class="two"><div><label class="f">Proveedor</label><input class="in" id="fpr" value="' + esc(st.proveedor || '') + '"></div><div><label class="f">Enlace de compra</label><input class="in" id="fe" value="' + esc(st.enlace || '') + '" placeholder="https://"></div></div>' +
+    '<label class="f">Notas</label><input class="in" id="fno" value="' + esc(st.notas || '') + '">' +
+    '<div class="actions">' + (a ? '<button class="btn danger" id="fdel">' + icon('trash', 's') + 'Dar de baja</button>' : '') + '<button class="btn" id="fsv">Guardar</button></div>', (el, close) => {
+    $$('[data-t]', el).forEach(b => b.onclick = () => { st.tipo = b.dataset.t; $$('[data-t]', el).forEach(x => x.classList.toggle('on', x === b)); });
+    $$('[data-md]', el).forEach(b => b.onclick = () => { st.medida = b.dataset.md; $$('[data-md]', el).forEach(x => x.classList.toggle('on', x === b)); $('#fcant').hidden = st.medida === 'nivel'; $('#fniv').hidden = st.medida !== 'nivel'; });
+    const lv = mountLevel(el, st.nivel);
+    const save = async extra => {
+      const body = Object.assign({ id: a ? a.id : '', nombre: $('#fn').value, tipo: st.tipo, marca: $('#fm').value, ubicacion: $('#fu').value, funcion: $('#ff').value, medida: st.medida, nivel: lv(), cantidad: $('#fq').value, unidad: $('#fun').value, minimo: $('#fmin').value, precaucion: $('#fp').value, proveedor: $('#fpr').value, enlace: $('#fe').value, notas: $('#fno').value }, extra || {});
+      if (!body.nombre.trim()) return toast('Indica el nombre.', true);
+      let r; if (await command(async () => { r = await api('invSave', body); }, extra ? 'Dado de baja' : 'Guardado')) { close(); if (extra) S.inv.articulos = S.inv.articulos.filter(x => x.id !== r.id); else invReplace(r); render(); if (toBuy && r && !extra) compraSheet(r); }
+    };
+    $('#fsv').onclick = () => save();
+    const del = $('#fdel'); if (del) del.onclick = async () => { if (await confirmSheet('Dar de baja', a.nombre + ' dejará de aparecer en el almacén. El historial se conserva.', 'Dar de baja', true)) save({ activo: false }); };
+  });
+}
+async function artPhoto(a) {
+  const files = await pickFiles(); if (!files.length) return;
+  toast('Subiendo foto…');
+  try {
+    const data = await compress(files[0], 1400, 0.82), thumb = await compress(files[0], 300, 0.7);
+    let r; if (await command(async () => { r = await api('invPhoto', { id: a.id, data: data, thumb: thumb }, 120000); }, 'Foto guardada')) { S.thumbs['inv:' + r.mini] = thumb; IDB.tput('inv:' + r.mini, thumb); invReplace(r); render(); }
+  } catch (e) { toast(e.message, true); }
+}
+function editCarga(c) {
+  sheet(c ? 'Editar lista de carga' : 'Nueva lista de carga', '<label class="f" style="margin-top:0">Nombre</label><input class="in" id="kn2" value="' + esc(c ? c.nombre : '') + '" placeholder="Ej.: Particular integral">' +
+    '<label class="f">Llevar siempre (una cosa por línea)</label><textarea class="in" id="kb">' + esc(c ? (c.base || []).join('\n') : '') + '</textarea>' +
+    '<label class="f">Según el trabajo</label><textarea class="in" id="ks" style="min-height:60px">' + esc(c ? (c.segun || []).join('\n') : '') + '</textarea>' +
+    '<label class="f">No llevar por defecto</label><textarea class="in" id="kno" style="min-height:60px">' + esc(c ? (c.no || []).join('\n') : '') + '</textarea>' +
+    '<div class="actions">' + (c ? '<button class="btn danger" id="kdel">' + icon('trash', 's') + 'Borrar</button>' : '') + '<button class="btn" id="ksv">Guardar</button></div>', (el, close) => {
+    $('#ksv').onclick = async () => { if (await command(() => api('invCarga', { id: c ? c.id : '', nombre: $('#kn2').value, base: $('#kb').value, segun: $('#ks').value, no: $('#kno').value }), 'Lista guardada')) { close(); loadInv(true); } };
+    const d = $('#kdel'); if (d) d.onclick = async () => { if (await confirmSheet('Borrar lista', 'Se borrará «' + c.nombre + '».', 'Borrar', true)) { if (await command(() => api('invCarga', { id: c.id, borrar: true }), 'Lista borrada')) { close(); loadInv(true); } } };
+  });
+}
+function gastoSheet() {
+  const cats = (S.inv && S.inv.categorias) || ['Otros'];
+  sheet('Añadir gasto', '<label class="f" style="margin-top:0">Concepto</label><input class="in" id="gc" placeholder="Ej.: Gasolina, peaje, herramienta…"><div class="two"><div><label class="f">Importe (€)</label><input class="in" id="gi" inputmode="decimal" placeholder="0,00"></div><div><label class="f">Fecha</label><input class="in" id="gf" type="date" value="' + madridDay() + '"></div></div>' +
+    '<label class="f">Categoría</label><div class="chips" id="gk">' + cats.map((c, i) => '<button type="button" data-k="' + esc(c) + '" class="' + (i === cats.length - 1 ? 'on' : '') + '">' + esc(c) + '</button>').join('') + '</div>' +
+    '<label class="f">Nota (opcional)</label><input class="in" id="gn"><div class="actions"><button class="btn ghost" data-c>Cancelar</button><button class="btn green" id="ggo">Guardar</button></div>', (el, close) => {
+    let k = cats[cats.length - 1];
+    $$('[data-k]', el).forEach(b => b.onclick = () => { k = b.dataset.k; $$('[data-k]', el).forEach(x => x.classList.toggle('on', x === b)); });
+    el.querySelector('[data-c]').onclick = close;
+    $('#ggo').onclick = async () => { if (await command(() => api('invGasto', { concepto: $('#gc').value, importe: $('#gi').value, fecha: $('#gf').value, categoria: k, nota: $('#gn').value }), 'Gasto guardado')) { close(); loadInv(true); } };
+  });
+}
 
 /* ============================ Portal del cliente ============================ */
 
