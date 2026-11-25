@@ -507,14 +507,23 @@ function flushMail_() {
   const list = _mail; _mail = [];
   list.forEach(m => { try { sendMail_(m); } catch (e) { console.error('Correo no enviado: ' + e); } });
 }
-function mailHtml_(title, lines, button, link, foot) {
-  const logo = APP.appUrl + 'icons/logo-header.png';
-  return '<div style="background:#f3f5f6;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;color:#16303f">' +
-    '<div style="max-width:520px;margin:0 auto;background:#fff;border:1px solid #e2e8eb;border-radius:14px;overflow:hidden">' +
-    '<div style="padding:18px 22px;border-bottom:3px solid #ac812e"><img src="' + logo + '" alt="Efecto Mariposa" height="44" style="vertical-align:middle"> <span style="font-size:15px;font-weight:bold;color:#102d48;vertical-align:middle;margin-left:8px">Efecto Mariposa · Clean &amp; Care</span></div>' +
-    '<div style="padding:22px"><h1 style="font-size:19px;margin:0 0 12px;color:#102d48">' + title + '</h1>' + lines.map(l => '<p style="margin:0 0 9px;font-size:14.5px;line-height:1.5">' + l + '</p>').join('') +
-    (link ? '<p style="margin:20px 0 6px"><a href="' + link + '" style="background:#176447;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9px;font-weight:bold;font-size:14.5px;display:inline-block">' + button + '</a></p>' : '') +
-    '</div><div style="padding:14px 22px;background:#f7f9fa;color:#5f7480;font-size:12px;line-height:1.5">' + (foot || 'Recibes este aviso porque Efecto Mariposa está trabajando en tu vehículo.') + '</div></div></div>';
+function mailHtml_(title, lines, button, link, foot, badge) {
+  const W = 'background-color:#ffffff;background-image:linear-gradient(#ffffff,#ffffff);';
+  return '<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light only">' +
+    '<style>:root{color-scheme:light only;supported-color-schemes:light only}</style></head>' +
+    '<body style="margin:0;padding:0;' + W + '">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="' + W + '"><tr><td align="center" style="padding:20px 10px;' + W + '">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;' + W + 'border:1px solid #e2e8eb;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;color:#16303f">' +
+    '<tr><td style="padding:0;' + W + '"><img src="' + APP.appUrl + 'icons/email-banner.png" width="560" alt="Efecto Mariposa · Clean &amp; Care" style="display:block;width:100%;max-width:560px;height:auto;border:0"></td></tr>' +
+    '<tr><td style="padding:26px 28px 8px;' + W + '">' +
+    (badge ? '<span style="display:inline-block;background-color:#e6f2ec;color:#16573e;font-size:12px;font-weight:bold;letter-spacing:.04em;text-transform:uppercase;padding:5px 11px;border-radius:20px;margin-bottom:12px">' + badge + '</span>' : '') +
+    '<h1 style="font-size:22px;line-height:1.3;margin:0 0 14px;color:#102d48">' + title + '</h1>' +
+    lines.map(l => '<p style="margin:0 0 11px;font-size:15px;line-height:1.6;color:#16303f">' + l + '</p>').join('') +
+    (link ? '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 10px"><tr><td style="background-color:#176447;border-radius:10px"><a href="' + link + '" style="display:inline-block;padding:14px 24px;color:#ffffff;text-decoration:none;font-weight:bold;font-size:15px">' + button + '</a></td></tr></table>' : '') +
+    '</td></tr>' +
+    '<tr><td style="padding:16px 28px 22px;' + W + 'border-top:1px solid #eef2f4;color:#5f7480;font-size:12.5px;line-height:1.55">' + (foot || 'Recibes este aviso porque Efecto Mariposa está trabajando en tu vehículo.') +
+    '<br><span style="color:#8a9ba4">Efecto Mariposa Clean &amp; Care · Comunidad de Madrid</span></td></tr>' +
+    '</table></td></tr></table></body></html>';
 }
 function sendMail_(m) {
   const s = m.s, c = m.client, plate = esc_(s.matricula || s.chasis);
@@ -525,17 +534,17 @@ function sendMail_(m) {
   let subject, html;
   if (m.kind === 'listo') {
     subject = 'Tu vehículo ' + (s.matricula || s.chasis) + ' está listo';
-    html = mailHtml_('Vehículo listo · ' + plate, ['Hola, ' + esc_(c.nombre) + ':', 'Hemos terminado la limpieza de <b>' + plate + '</b> (' + esc_(s.tipo) + ') y ha pasado nuestro control de calidad.', 'Puedes ver las fotos del resultado en tu enlace.'], btn, link, foot);
+    html = mailHtml_('Tu vehículo ' + plate + ' está listo', ['Hola, ' + esc_(c.nombre) + ':', 'Hemos terminado la limpieza de <b>' + plate + '</b> (' + esc_(s.tipo) + ') y ha superado nuestro control de calidad.', 'Ya puedes ver las fotos del resultado.'], btn, link, foot, 'Listo para entrega');
   } else if (m.kind === 'incidencia') {
     subject = 'Aviso sobre tu vehículo ' + (s.matricula || s.chasis);
-    html = mailHtml_('Aviso · ' + plate, ['Hola, ' + esc_(c.nombre) + ':', 'Durante el servicio de <b>' + plate + '</b> hemos registrado lo siguiente:', '<b>' + esc_(m.extra.tipo) + '.</b> ' + esc_(m.extra.texto), 'Puedes ver los detalles y las fotos en tu enlace. Si tienes cualquier duda, responde a este correo.'], btn, link, foot);
+    html = mailHtml_('Aviso sobre tu vehículo ' + plate, ['Hola, ' + esc_(c.nombre) + ':', 'Durante el servicio de <b>' + plate + '</b> hemos registrado lo siguiente:', '<b>' + esc_(m.extra.tipo) + '.</b> ' + esc_(m.extra.texto), 'Puedes ver los detalles y las fotos en tu enlace. Si tienes cualquier duda, responde a este correo.'], btn, link, foot, 'Incidencia');
   } else if (m.kind === 'entregado') {
     const r = s.recibo || {};
     subject = 'Entrega confirmada · ' + (s.matricula || s.chasis);
-    html = mailHtml_('Entrega confirmada · ' + plate, ['Hola, ' + esc_(c.nombre) + ':', 'El vehículo <b>' + plate + '</b> se ha entregado el ' + fmtDate_(s.cerrado) + '.', 'Albarán <b>' + esc_(r.numero) + '</b> · recibido por ' + esc_(r.signer) + ' · ' + esc_(r.conformity) + '.', 'Gracias por confiar en Efecto Mariposa.'], btn, link, foot);
+    html = mailHtml_('Entrega confirmada · ' + plate, ['Hola, ' + esc_(c.nombre) + ':', 'El vehículo <b>' + plate + '</b> se ha entregado el ' + fmtDate_(s.cerrado) + '.', 'Albarán <b>' + esc_(r.numero) + '</b> · recibido por ' + esc_(r.signer) + ' · ' + esc_(r.conformity) + '.', 'Gracias por confiar en Efecto Mariposa.'], btn, link, foot, 'Entregado');
   } else if (m.kind === 'albaran') {
     subject = 'Albarán pendiente de conformidad · ' + m.extra.periodo;
-    html = mailHtml_('Albarán del periodo ' + esc_(m.extra.periodo), ['Hola, ' + esc_(c.nombre) + ':', 'Ya tienes disponible el albarán con los <b>' + m.extra.n + ' vehículos</b> entregados en este periodo.', 'Puedes revisarlo, descargarlo y dar tu conformidad desde el portal.'], 'Revisar y dar conformidad', APP.appUrl, 'Entra con tu PIN personal en el portal de clientes de Efecto Mariposa.');
+    html = mailHtml_('Albarán del periodo ' + esc_(m.extra.periodo), ['Hola, ' + esc_(c.nombre) + ':', 'Ya tienes disponible el albarán con los <b>' + m.extra.n + ' vehículos</b> entregados en este periodo.', 'Puedes revisarlo, descargarlo y dar tu conformidad desde el portal.'], 'Revisar y dar conformidad', APP.appUrl, 'Entra con tu PIN personal en el portal de clientes de Efecto Mariposa.', 'Albarán');
   } else return;
   MailApp.sendEmail({ to: m.to.join(','), subject: subject, htmlBody: html, name: 'Efecto Mariposa' });
 }
@@ -543,7 +552,7 @@ function sendMail_(m) {
 /** Ejecútalo una vez desde el editor para dar permiso de envío de correos (te llega una prueba). */
 function autorizarCorreo() {
   const me = Session.getEffectiveUser().getEmail();
-  MailApp.sendEmail({ to: me, subject: 'Prueba de avisos · EM Operaciones', name: 'Efecto Mariposa', htmlBody: mailHtml_('Así verán tus clientes los avisos', ['Este es un correo de prueba.', 'Cuando un vehículo esté listo, tenga una incidencia o se entregue, el cliente recibirá un aviso como este.'], 'Abrir la app', APP.appUrl) });
+  MailApp.sendEmail({ to: me, subject: 'Prueba de avisos · EM Operaciones', name: 'Efecto Mariposa', htmlBody: mailHtml_('Así verán tus clientes los avisos', ['Este es un correo de prueba.', 'Cuando un vehículo esté listo, tenga una incidencia o se entregue, el cliente recibirá un aviso como este.'], 'Abrir la app', APP.appUrl, '', 'Prueba') });
   console.log('Correo de prueba enviado a ' + me + '. Quedan ' + MailApp.getRemainingDailyQuota() + ' envíos hoy.');
 }
 
