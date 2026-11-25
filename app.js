@@ -3,7 +3,7 @@
 'use strict';
 
 const CFG = window.EM_CONFIG || {};
-const VERSION = '3.0.0';
+const VERSION = '3.1.0';
 const ROOT = document.getElementById('root');
 
 /* ============================ Utilidades ============================ */
@@ -1925,6 +1925,7 @@ const C = {
   facturas: () => ((S.crm && S.crm.facturas) || []).filter(f => f.estado !== 'Anulada'),
   pagado: f => (f.cobros || []).reduce((n, c) => n + C.num(c.importe), 0),
   pendiente: f => f.estado === 'Anulada' ? 0 : Math.max(0, C.num(f.total) - C.pagado(f)),
+  porFacturar: f => f.anticipo && !f.anticipo.final && f.estado !== 'Anulada' ? C.num(f.anticipo.restoBase) * (1 + C.num(f.ivaPct) / 100) : 0,
   q: day => Math.floor((Number(String(day).slice(5, 7)) - 1) / 3) + 1,
   activos: () => ((S.crm && S.crm.contactos) || []).filter(c => !c.cliente && ['Ganado', 'Perdido', 'Archivado'].indexOf(c.fase) < 0)
 };
@@ -1980,6 +1981,7 @@ VIEWS.panel = function () {
   const facMes = fs.filter(f => String(f.fecha).slice(0, 7) === mes).reduce((n, f) => n + C.num(f.imponible), 0);
   const facAno = fs.filter(f => String(f.fecha).slice(0, 4) === ano).reduce((n, f) => n + C.num(f.imponible), 0);
   const pend = fs.reduce((n, f) => n + C.pendiente(f), 0), nPend = fs.filter(f => C.pendiente(f) > 0.01).length;
+  const antic = fs.filter(f => C.porFacturar(f) > 0.01), porFac = antic.reduce((n, f) => n + C.porFacturar(f), 0);
   const q = quarterCalc(Number(ano), C.q(hoy));
   const seg = C.activos().filter(c => !c.revisar && c.proxFecha && c.proxFecha <= shiftDay(hoy, 2)).sort((a, b) => a.proxFecha.localeCompare(b.proxFecha));
   const segCl = S.crm.clientes.filter(c => c.crm && c.crm.proxFecha && c.crm.proxFecha <= shiftDay(hoy, 2));
@@ -1990,7 +1992,7 @@ VIEWS.panel = function () {
   const kpi = (lbl, val, extra, to, cls) => '<button class="kpi ' + (cls || '') + '" data-act="go" data-to="' + to + '"><small>' + esc(lbl) + '</small><b>' + val + '</b>' + (extra || '') + '</button>';
   const html =
     '<div class="kpis k4">' + kpi('Facturado ' + new Date().toLocaleDateString('es-ES', { month: 'long', timeZone: 'Europe/Madrid' }), C.eur0(facMes), bar(facMes, o.mensual), 'facturas') + kpi('Facturado ' + ano, C.eur0(facAno), bar(facAno, o.anual), 'facturas') +
-    kpi('Por cobrar', C.eur0(pend), '<small class="tiny muted">' + nPend + ' facturas</small>', 'facturas', pend > 0 ? 'alert' : '') + kpi('Beneficio T' + C.q(hoy) + ' (estimado)', C.eur0(q.beneficio), '<small class="tiny muted">IVA a pagar ' + C.eur0(q.iva303) + '</small>', 'contabilidad') + '</div>' +
+    kpi('Por cobrar', C.eur0(pend), '<small class="tiny muted">' + nPend + ' facturas' + (porFac > 0.01 ? ' · <b style="color:var(--warn)">' + C.eur0(porFac) + ' por facturar</b>' : '') + '</small>', 'facturas', pend > 0 ? 'alert' : '') + kpi('Beneficio T' + C.q(hoy) + ' (estimado)', C.eur0(q.beneficio), '<small class="tiny muted">IVA a pagar ' + C.eur0(q.iva303) + '</small>', 'contabilidad') + '</div>' +
     (revisar ? '<div class="banner warn" style="margin-top:10px">' + icon('target') + '<span class="grow"><b>Revisión de la semana:</b> ' + revisar + ' prospectos por revisar. Vamos con unos 20 al día.</span><button class="btn sm" data-act="go" data-to="comercial/revisar">Revisar</button></div>' : '') +
     (!me().email ? '<div class="banner" style="margin-top:10px">' + icon('user') + '<span class="grow">Completa tu correo y teléfono para recibir avisos.</span><button class="btn sm" id="prof">Completar</button></div>' : '') +
     '<div class="grid2" style="margin-top:12px">' +
@@ -2000,8 +2002,9 @@ VIEWS.panel = function () {
     (vigilar.length ? vigilar.slice(0, 6).map(c => rowLink('ficha/' + c.id, esc(c.nombre), 'Suele: cada ' + c.ritmo + ' días · último: hace ' + c.dias + ' días', ritmoChip(c))).join('') : '<p class="small muted" style="padding:8px 0">Todos los clientes van a su ritmo.</p>') + '</div></div>' +
     '<div class="card"><div class="row between"><h2>' + icon('file', 's') + ' Presupuestos abiertos</h2><span class="small muted">' + quotes.length + '</span></div><div class="list">' +
     (quotes.length ? quotes.slice(0, 6).map(p => rowLink(p.cliente ? 'ficha/' + p.cliente : 'contacto/' + p.contacto, esc(p.datos && p.datos.nombre), esc(p.numero) + ' · ' + C.d(p.fecha), '<b class="small">' + C.eur0(p.total) + '</b>')).join('') : '<p class="small muted" style="padding:8px 0">No hay presupuestos pendientes de respuesta.</p>') + '</div></div>' +
-    '<div class="card"><div class="row between"><h2>' + icon('euro', 's') + ' Pendiente de cobro</h2><a class="link small" href="#/facturas">Facturas</a></div><div class="list">' +
-    (nPend ? fs.filter(f => C.pendiente(f) > 0.01).slice(0, 6).map(f => '<div class="li" data-fac="' + esc(f.id) + '" style="cursor:pointer"><div class="grow"><b>' + esc(f.numero) + ' · ' + esc(f.datos && f.datos.nombre) + '</b><div class="small muted">' + C.d(f.fecha) + '</div></div><b class="small">' + C.eur(C.pendiente(f)) + '</b></div>').join('') : '<p class="small muted" style="padding:8px 0">Todo cobrado.</p>') + '</div></div>' +
+    '<div class="card"><div class="row between"><h2>' + icon('euro', 's') + ' Cobros y anticipos</h2><a class="link small" href="#/facturas">Facturas</a></div><div class="list">' +
+    antic.map(f => '<div class="li" data-fac="' + esc(f.id) + '" style="cursor:pointer"><div class="grow"><b>' + esc(f.datos && f.datos.nombre) + '</b><div class="small muted">Resto por facturar · anticipo ' + esc(f.numero) + '</div></div><span class="chip warn">' + C.eur(C.porFacturar(f)) + '</span></div>').join('') +
+    (nPend ? fs.filter(f => C.pendiente(f) > 0.01).slice(0, 6).map(f => '<div class="li" data-fac="' + esc(f.id) + '" style="cursor:pointer"><div class="grow"><b>' + esc(f.numero) + ' · ' + esc(f.datos && f.datos.nombre) + '</b><div class="small muted">Por cobrar · ' + C.d(f.fecha) + '</div></div><b class="small">' + C.eur(C.pendiente(f)) + '</b></div>').join('') : (antic.length ? '' : '<p class="small muted" style="padding:8px 0">Todo cobrado y facturado.</p>')) + '</div></div>' +
     '</div>';
   return { title: 'Panel', html: html, mount: el => {
     $$('[data-fac]', el).forEach(r => r.onclick = () => invoiceSheet(S.crm.facturas.find(f => f.id === r.dataset.fac)));
@@ -2159,6 +2162,7 @@ VIEWS.ficha = function (r) {
     '<div class="card"><div class="row between" style="align-items:flex-start"><div class="grow"><h1 style="font-size:18px">' + esc(c.nombre) + '</h1><p class="small muted">' + [c.tipo === 'empresa' ? 'Empresa' : 'Particular', c.nif && 'NIF ' + c.nif, c.direccion].filter(Boolean).map(esc).join(' · ') + '</p></div>' + ritmoChip(c) + '</div>' +
     '<div style="margin-top:10px">' + telLinks(c.telefono, c.email) + '</div></div>' +
     '<div class="kpis k4" style="margin-top:10px"><div class="kpi"><small>Facturado ' + ano + '</small><b>' + C.eur0(facAno) + '</b></div><div class="kpi ' + (pend > 0.01 ? 'alert' : '') + '"><small>Pendiente</small><b>' + C.eur0(pend) + '</b></div><div class="kpi"><small>Servicios 90 días</small><b>' + (c.n90 || 0) + '</b></div><div class="kpi"><small>Ritmo</small><b>' + (c.ritmo ? 'cada ' + c.ritmo + ' d' : '—') + '</b><small class="tiny muted">' + (c.dias != null ? 'último hace ' + c.dias + ' d' : 'sin servicios') + '</small></div></div>' +
+    fs.filter(f => C.porFacturar(f) > 0.01).map(f => '<div class="banner warn" style="margin-top:10px">' + icon('euro') + '<span class="grow">Falta facturar el resto del anticipo ' + esc(f.numero) + ': <b>' + C.eur(C.porFacturar(f)) + '</b></span><button class="btn sm" data-fin="' + esc(f.id) + '">Factura final</button></div>').join('') +
     '<div class="card" style="margin-top:10px"><div class="row between"><h2>Seguimiento</h2>' + (crm.proxFecha ? whenChip(crm.proxFecha) : '') + '</div><p style="margin-top:6px">' + esc(crm.proxAccion || (c.estado === 'Se enfría' ? 'Lleva más tiempo del habitual sin servicios: conviene preguntar qué tal.' : 'Sin acción pendiente')) + '</p>' +
     '<button class="btn sm green" id="fnote" style="margin-top:10px">' + icon('plus', 's') + 'Registrar contacto</button></div>' +
     '<div class="card"><div class="row between"><h2>Facturas</h2><button class="btn sm ghost" id="finv">' + icon('plus', 's') + 'Crear factura</button></div><div class="list">' + (fs.length ? fs.slice(0, 12).map(facRow).join('') : '<p class="small muted" style="padding:6px 0">Sin facturas.</p>') + '</div></div>' +
@@ -2168,6 +2172,7 @@ VIEWS.ficha = function (r) {
   return { title: 'Cliente', back: true, html: html, mount: el => {
     $('#fnote', el).onclick = () => noteSheet('Registrar contacto', body => api('clientCrm', { id: c.id, nota: body.texto, canal: body.canal, proxAccion: body.proxAccion, proxFecha: body.proxFecha }), true, crm);
     $('#finv', el).onclick = () => invoiceEditor(null, c.id);
+    $$('[data-fin]', el).forEach(b => b.onclick = () => { const a = S.crm.facturas.find(x => x.id === b.dataset.fin); invoiceEditor(null, c.id, a); });
     $('#fq', el).onclick = () => quoteSheet(null, { cliente: c.id, nombre: c.nombre });
     bindQuotes(el); bindInvRows(el);
     $('#fdat', el).onclick = () => clientDataSheet(c);
@@ -2190,7 +2195,7 @@ function clientDataSheet(c) {
 
 /* ---------- Facturas ---------- */
 function facRow(f) {
-  return '<div class="li" data-fac="' + esc(f.id) + '" style="cursor:pointer"><div class="grow" style="min-width:0"><b>' + esc(f.numero) + '</b> <span class="small muted">· ' + C.d(f.fecha) + '</span><div class="small muted ellipsis">' + esc(f.datos && f.datos.nombre) + '</div></div><div style="text-align:right"><b class="small">' + C.eur(f.total) + '</b><div>' + factChip(f) + '</div></div></div>';
+  return '<div class="li" data-fac="' + esc(f.id) + '" style="cursor:pointer"><div class="grow" style="min-width:0"><b>' + esc(f.numero) + '</b> <span class="small muted">· ' + C.d(f.fecha) + '</span><div class="small muted ellipsis">' + esc(f.datos && f.datos.nombre) + (f.anticipo ? ' · anticipo ' + esc(f.anticipo.pct) + ' %' + (f.anticipo.final ? ' · cerrado' : ' · falta ' + C.eur0(C.porFacturar(f))) : '') + '</div></div><div style="text-align:right"><b class="small">' + C.eur(f.total) + '</b><div>' + factChip(f) + '</div></div></div>';
 }
 function bindInvRows(el) { $$('[data-fac]', el).forEach(r => r.onclick = () => invoiceSheet(S.crm.facturas.find(f => f.id === r.dataset.fac))); }
 VIEWS.facturas = function () {
@@ -2199,12 +2204,12 @@ VIEWS.facturas = function () {
   loadCrm();
   const tab = S.ui.facTab || 'todas', ano = S.ui.facAno || C.hoy().slice(0, 4);
   const all = S.crm.facturas.filter(f => String(f.fecha).slice(0, 4) === ano).sort((a, b) => String(b.numero).localeCompare(String(a.numero)));
-  const list = tab === 'pend' ? all.filter(f => C.pendiente(f) > 0.01) : all;
+  const list = tab === 'pend' ? all.filter(f => C.pendiente(f) > 0.01 || C.porFacturar(f) > 0.01) : all;
   const ok = all.filter(f => f.estado !== 'Anulada');
-  const base = ok.reduce((n, f) => n + C.num(f.imponible), 0), pend = ok.reduce((n, f) => n + C.pendiente(f), 0);
+  const base = ok.reduce((n, f) => n + C.num(f.imponible), 0), pend = ok.reduce((n, f) => n + C.pendiente(f), 0), porF = S.crm.facturas.reduce((n, f) => n + C.porFacturar(f), 0);
   const years = Array.from(new Set(S.crm.facturas.map(f => String(f.fecha).slice(0, 4)).concat([C.hoy().slice(0, 4)]))).sort().reverse();
-  const html = '<div class="kpis k4"><div class="kpi"><small>Facturas ' + ano + '</small><b>' + ok.length + '</b></div><div class="kpi"><small>Base imponible</small><b>' + C.eur0(base) + '</b></div><div class="kpi"><small>Total con IVA</small><b>' + C.eur0(ok.reduce((n, f) => n + C.num(f.total), 0)) + '</b></div><div class="kpi ' + (pend > 0.01 ? 'alert' : '') + '"><small>Por cobrar</small><b>' + C.eur0(pend) + '</b></div></div>' +
-    '<div class="row" style="gap:8px;margin-top:12px"><div class="seg grow">' + [['todas', 'Todas'], ['pend', 'Por cobrar']].map(t => '<button data-ft="' + t[0] + '" class="' + (tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div><select class="in" id="fy" style="width:auto">' + years.map(y => '<option ' + (y === ano ? 'selected' : '') + '>' + y + '</option>').join('') + '</select><button class="btn green" id="fnew">' + icon('plus') + '<span class="hide-s">Factura</span></button></div>' +
+  const html = '<div class="kpis k4"><div class="kpi"><small>Facturas ' + ano + '</small><b>' + ok.length + '</b></div><div class="kpi"><small>Base imponible</small><b>' + C.eur0(base) + '</b></div><div class="kpi"><small>Total con IVA</small><b>' + C.eur0(ok.reduce((n, f) => n + C.num(f.total), 0)) + '</b></div><div class="kpi ' + (pend > 0.01 ? 'alert' : '') + '"><small>Por cobrar</small><b>' + C.eur0(pend) + '</b>' + (porF > 0.01 ? '<small class="tiny" style="color:var(--warn)">+ ' + C.eur0(porF) + ' por facturar</small>' : '') + '</div></div>' +
+    '<div class="row" style="gap:8px;margin-top:12px"><div class="seg grow">' + [['todas', 'Todas'], ['pend', 'Pendientes']].map(t => '<button data-ft="' + t[0] + '" class="' + (tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div><select class="in" id="fy" style="width:auto">' + years.map(y => '<option ' + (y === ano ? 'selected' : '') + '>' + y + '</option>').join('') + '</select><button class="btn green" id="fnew">' + icon('plus') + '<span class="hide-s">Factura</span></button></div>' +
     '<div class="card list" style="padding:2px 14px;margin-top:10px">' + (list.length ? list.map(facRow).join('') : '<p class="small muted" style="padding:12px 0">No hay facturas.</p>') + '</div>' +
     '<p class="tiny muted" style="margin-top:8px">La numeración es correlativa y la pone la app: siguiente número <b>' + esc(nextInvNumber()) + '</b>. Cada PDF se guarda en tu carpeta de Facturas y en la del cliente.</p>';
   return { title: 'Facturas', html: html, mount: el => {
@@ -2226,9 +2231,12 @@ function invoiceSheet(f) {
     '<table class="t" style="margin-top:10px">' + (f.lineas || []).slice(0, 40).map(l => '<tr><td>' + esc(l.ref || '') + '<div class="tiny muted">' + esc(l.concepto) + '</div></td><td style="text-align:right;white-space:nowrap">' + C.eur(C.num(l.cantidad || 1) * C.num(l.precio)) + '</td></tr>').join('') + '</table>' +
     '<dl class="kv" style="margin-top:10px"><dt>Base</dt><dd>' + C.eur(f.imponible) + '</dd><dt>IVA ' + esc(f.ivaPct) + ' %</dt><dd>' + C.eur(f.iva) + '</dd>' + (C.num(f.retPct) ? '<dt>Retención</dt><dd>-' + C.eur(f.ret) + '</dd>' : '') + '<dt>Total</dt><dd><b>' + C.eur(f.total) + '</b></dd><dt>Cobrado</dt><dd>' + C.eur(paid) + (f.cobros || []).map(c => '<div class="tiny muted">' + C.d(c.fecha) + ' · ' + esc(c.metodo || '') + ' · ' + C.eur(c.importe) + '</div>').join('') + '</dd></dl>' +
     (f.notas ? '<p class="small muted" style="margin-top:8px">' + esc(f.notas) + '</p>' : '') +
-    '<div class="actions" style="flex-wrap:wrap">' + (f.archivo ? '<button class="btn ghost" id="idl">' + icon('download') + 'PDF</button>' : '') + (f.estado !== 'Anulada' && C.pendiente(f) > 0.01 ? '<button class="btn green" id="ipay">' + icon('check') + 'Registrar cobro</button>' : '') + (f.origen === 'App' && f.estado !== 'Anulada' ? '<button class="btn ghost" id="ied">' + icon('edit') + 'Corregir</button><button class="btn danger" id="ian">Anular</button>' : '') + (paid > 0 && f.estado !== 'Anulada' ? '<button class="btn ghost" id="iund">Deshacer cobros</button>' : '') + '</div>', (el, close) => {
+    (f.anticipo ? '<div class="banner ' + (f.anticipo.final ? '' : 'warn') + '" style="margin-top:10px">' + icon('euro') + '<span class="grow">Anticipo del ' + esc(f.anticipo.pct) + ' % de un servicio de ' + C.eur(f.anticipo.totalBase) + ' + IVA. ' + (f.anticipo.final ? 'Resto ya facturado en ' + esc((S.crm.facturas.find(x => x.id === f.anticipo.final) || {}).numero || '') + '.' : 'Falta por facturar ' + C.eur(f.anticipo.restoBase) + ' + IVA = <b>' + C.eur(C.porFacturar(f)) + '</b>.') + '</span></div>' : '') +
+    '<div class="actions" style="flex-wrap:wrap">' + (f.anticipo && !f.anticipo.final && f.estado !== 'Anulada' ? '<button class="btn green" id="ifin">' + icon('file') + 'Factura final</button>' : '') + (!f.anticipo && f.estado !== 'Anulada' ? '<button class="btn ghost" id="iant">Es un anticipo</button>' : '') + (f.archivo ? '<button class="btn ghost" id="idl">' + icon('download') + 'PDF</button>' : '') + (f.estado !== 'Anulada' && C.pendiente(f) > 0.01 ? '<button class="btn green" id="ipay">' + icon('check') + 'Registrar cobro</button>' : '') + (f.origen === 'App' && f.estado !== 'Anulada' ? '<button class="btn ghost" id="ied">' + icon('edit') + 'Corregir</button><button class="btn danger" id="ian">Anular</button>' : '') + (paid > 0 && f.estado !== 'Anulada' ? '<button class="btn ghost" id="iund">Deshacer cobros</button>' : '') + '</div>', (el, close) => {
     const b = id => $(id, el);
     if (b('#idl')) b('#idl').onclick = () => docDownload('factura', f.id);
+    if (b('#ifin')) b('#ifin').onclick = () => { close(); invoiceEditor(null, f.cliente, f); };
+    if (b('#iant')) b('#iant').onclick = async () => { const v = await promptSheet('Marcar ' + f.numero + ' como anticipo', 'Precio total del servicio, sin IVA (lo facturado aquí es ' + C.eur(f.imponible) + ')', { ok: 'Guardar' }); if (v === null) return; if (await command(async () => { await api('invoiceAnticipo', { id: f.id, totalBase: C.num(v) }); await loadCrm(true); }, 'Marcado como anticipo')) { close(); render(); } };
     if (b('#ipay')) b('#ipay').onclick = () => { close(); paySheet(f); };
     if (b('#ied')) b('#ied').onclick = () => { close(); invoiceEditor(f, f.cliente); };
     if (b('#ian')) b('#ian').onclick = async () => { const m = await promptSheet('Anular factura ' + f.numero, 'Motivo', { ok: 'Anular' }); if (m === null) return; if (await command(async () => { await api('invoicePay', { id: f.id, anular: true, motivo: m }); await loadCrm(true); }, 'Factura anulada')) { close(); render(); } };
@@ -2244,18 +2252,21 @@ function paySheet(f) {
     $('#psv', el).onclick = async () => { if (await command(async () => { await api('invoicePay', { id: f.id, importe: C.num($('#pi', el).value), fecha: $('#pf', el).value, metodo: m }); await loadCrm(true); }, 'Cobro registrado')) { close(); render(); } };
   });
 }
-function invoiceEditor(f, clientId) {
+function invoiceEditor(f, clientId, ant) {
   const cl = S.crm.clientes.filter(c => c.activo).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   const hoy = madridDay();
   const st = f ? JSON.parse(JSON.stringify(f)) : { cliente: clientId || (cl[0] || {}).id, fecha: hoy, lineas: [{ fecha: hoy, ref: '', concepto: '', cantidad: 1, precio: '' }], ivaPct: 21, retPct: 0, vence: '', notas: '', from: shiftDay(hoy, -6), to: hoy };
+  if (ant) { st.lineas = [{ fecha: hoy, ref: '', concepto: 'Resto del servicio (' + (100 - C.num(ant.anticipo.pct)) + ' %) · anticipo en factura ' + ant.numero, cantidad: 1, precio: ant.anticipo.restoBase }]; st.ivaPct = ant.ivaPct; st.notas = 'Anticipo de ' + C.eur(ant.imponible) + ' + IVA facturado en ' + ant.numero + '.'; }
+  if (st.esAnticipo == null) st.esAnticipo = !!(f && f.anticipo); if (st.totalBase == null) st.totalBase = f && f.anticipo ? f.anticipo.totalBase : '';
   const draw = () => sheet(f ? 'Corregir factura ' + f.numero : 'Nueva factura · ' + nextInvNumber(), (f ? '<div class="banner warn" style="margin-bottom:10px">' + icon('alert') + '<span>Úsalo solo para corregir errores antes de enviarla. El número no cambia y el PDF se rehace.</span></div>' : '') +
     '<div class="two"><div><label class="f" style="margin-top:0">Cliente</label><select class="in" id="ic" ' + (f ? 'disabled' : '') + '>' + cl.map(c => '<option value="' + esc(c.id) + '" ' + (c.id === st.cliente ? 'selected' : '') + '>' + esc(c.nombre) + '</option>').join('') + '</select></div><div><label class="f" style="margin-top:0">Fecha de emisión</label><input type="date" class="in" id="ifd" value="' + esc(st.fecha) + '" ' + (f ? 'disabled' : '') + '></div></div>' +
     (f ? '' : '<div class="card soft" style="margin-top:10px;padding:10px"><b class="small">Rellenar con servicios entregados</b><div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap"><input type="date" class="in" id="ifr" value="' + esc(st.from) + '" style="flex:1;min-width:130px"><input type="date" class="in" id="ito" value="' + esc(st.to) + '" style="flex:1;min-width:130px"><button type="button" class="btn sm" id="iload">' + icon('download', 's') + 'Cargar</button></div><p class="tiny muted" style="margin-top:4px">Pone cada vehículo con su matrícula y la tarifa del cliente. Los ya facturados se marcan para que no se repitan.</p></div>') +
     '<label class="f">Conceptos (precio sin IVA)</label>' + linesEditor(st.lineas, { fecha: true }) +
     '<div class="two"><div><label class="f">IVA %</label><input class="in" id="iiv" inputmode="decimal" value="' + esc(st.ivaPct) + '"></div><div><label class="f">Retención IRPF %</label><input class="in" id="irt" inputmode="decimal" value="' + esc(st.retPct || 0) + '"></div></div>' +
     '<div class="two"><div><label class="f">Vencimiento (opcional)</label><input type="date" class="in" id="ive" value="' + esc(st.vence || '') + '"></div><div><label class="f">Nota en la factura</label><input class="in" id="ino" value="' + esc(st.notas || '') + '" placeholder="Servicios del 16 al 19/11"></div></div>' +
+    (ant ? '' : '<div class="row between" style="margin-top:14px"><div><b style="font-size:14px">Es un anticipo</b><p class="small muted">Para saber lo que queda por facturar al terminar.</p></div><label class="switch"><input type="checkbox" id="ian2" ' + (st.esAnticipo ? 'checked' : '') + '><span></span></label></div><div id="iantw" ' + (st.esAnticipo ? '' : 'hidden') + '><label class="f">Precio total del servicio (sin IVA)</label><input class="in" id="itb" inputmode="decimal" value="' + esc(st.totalBase === '' ? '' : String(st.totalBase).replace('.', ',')) + '" placeholder="450"></div>') +
     '<div class="tot-l" id="itot"></div><div class="actions"><button class="btn green" id="isv">' + icon('file') + (f ? 'Guardar y rehacer PDF' : 'Emitir factura') + '</button></div>', (el, close) => {
-    const keep = () => { readLines(el, st.lineas); if (!f) { st.cliente = $('#ic', el).value; st.fecha = $('#ifd', el).value; st.from = $('#ifr', el).value; st.to = $('#ito', el).value; } st.ivaPct = $('#iiv', el).value; st.retPct = $('#irt', el).value; st.vence = $('#ive', el).value; st.notas = $('#ino', el).value; };
+    const keep = () => { readLines(el, st.lineas); if (!f) { st.cliente = $('#ic', el).value; st.fecha = $('#ifd', el).value; st.from = $('#ifr', el).value; st.to = $('#ito', el).value; } st.ivaPct = $('#iiv', el).value; st.retPct = $('#irt', el).value; st.vence = $('#ive', el).value; st.notas = $('#ino', el).value; const ia = $('#ian2', el); if (ia) { st.esAnticipo = ia.checked; st.totalBase = $('#itb', el).value; $('#iantw', el).hidden = !ia.checked; } };
     const upd = () => { keep(); const b = st.lineas.reduce((n, l) => n + C.num(l.cantidad || 1) * C.num(l.precio), 0), iv = b * C.num(st.ivaPct) / 100, rt = b * C.num(st.retPct) / 100; $('#itot', el).innerHTML = 'Base <b>' + C.eur(b) + '</b> · IVA ' + C.eur(iv) + (rt ? ' · Ret. -' + C.eur(rt) : '') + ' · Total <b>' + C.eur(b + iv - rt) + '</b>'; };
     el.oninput = upd; upd();
     $('#ladd', el).onclick = () => { keep(); st.lineas.push({ fecha: st.fecha, ref: '', concepto: '', cantidad: 1, precio: '' }); close(); draw(); };
@@ -2274,9 +2285,10 @@ function invoiceEditor(f, clientId) {
       const lines = st.lineas.filter(l => String(l.concepto || '').trim());
       if (!lines.length) return toast('Añade al menos un concepto.', true);
       if (lines.some(l => !(C.num(l.precio) > 0))) return toast('Falta el precio en alguna línea.', true);
+      if (st.esAnticipo && !(C.num(st.totalBase) > lines.reduce((n, l) => n + C.num(l.cantidad || 1) * C.num(l.precio), 0))) return toast('Indica el precio total del servicio (mayor que el anticipo).', true);
       if (!f && !(await confirmSheet('Emitir factura ' + nextInvNumber(), 'Se creará con número correlativo y se guardará el PDF en Drive.', 'Emitir'))) return;
       let r;
-      if (await command(async () => { r = await api('invoiceSave', { id: f ? f.id : '', cliente: st.cliente, fecha: st.fecha, lineas: lines, ivaPct: st.ivaPct, retPct: st.retPct, vence: st.vence, notas: st.notas }, 120000); await loadCrm(true); }, f ? 'Factura corregida' : 'Factura ' + 'emitida')) { close(); render(); invoiceSheet(S.crm.facturas.find(x => x.id === r.id)); }
+      if (await command(async () => { r = await api('invoiceSave', { id: f ? f.id : '', cliente: st.cliente, fecha: st.fecha, lineas: lines, ivaPct: st.ivaPct, retPct: st.retPct, vence: st.vence, notas: st.notas, esAnticipo: ant ? undefined : !!st.esAnticipo, totalBase: C.num(st.totalBase), anticipoDe: ant ? ant.id : '' }, 120000); await loadCrm(true); }, f ? 'Factura corregida' : 'Factura ' + 'emitida')) { close(); render(); invoiceSheet(S.crm.facturas.find(x => x.id === r.id)); }
     };
   });
   draw();

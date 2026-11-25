@@ -18,6 +18,7 @@ const CRM_ACTIONS = {
   invoiceDraft: invoiceDraft_,
   invoiceSave: invoiceSave_,
   invoicePay: invoicePay_,
+  invoiceAnticipo: invoiceAnticipo_,
   docFile: docFile_,
   quoteSave: quoteSave_,
   quoteState: quoteState_,
@@ -40,6 +41,7 @@ function activarCrm() {
   const cal = CalendarApp.getDefaultCalendar();
   console.log('Calendario conectado: ' + cal.getName());
   if (!props_().getProperty('CRM_SEEDED')) seedCrm_();
+  detectAnticipos_();
   ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'importarSolicitudes').forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('importarSolicitudes').timeBased().everyHours(1).create();
   importarSolicitudes();
@@ -53,6 +55,33 @@ function crmMigrate_() {
   const movs = read_('Movimientos').filter(m => m.importe && (m.tipo === 'gasto' || m.tipo === 'entrada') && !done[m.id]);
   if (movs.length) insertMany_('Contabilidad', movs.map(m => accFromMov_(m)));
   if (!props_().getProperty('CRM_SEEDED') && typeof SEED_CRM !== 'undefined' && sheet_('Facturas').getLastRow() < 2) seedCrm_();
+  detectAnticipos_();
+}
+/** Marca como anticipo las facturas cuya nota dice «anticipo 50 %» y aún no lo tienen. */
+function detectAnticipos_() {
+  read_('Facturas').forEach(f => {
+    if (f.anticipo || f.estado === 'Anulada') return;
+    const m = String(f.notas || '').match(/anticipo[^0-9]{0,12}(\d{1,3})\s*%/i);
+    if (!m || !(Number(m[1]) > 0 && Number(m[1]) < 100)) return;
+    const totalBase = money_(money_(f.imponible) * 100 / Number(m[1]));
+    f.anticipo = { pct: Number(m[1]), totalBase: totalBase, restoBase: money_(totalBase - money_(f.imponible)), final: '' };
+    update_('Facturas', f);
+  });
+}
+function anticipoOf_(f, totalBase) {
+  const t = money_(totalBase);
+  if (!(t > money_(f.imponible))) fail_('El total del servicio debe ser mayor que lo facturado en el anticipo.');
+  return { pct: Math.round(100 * money_(f.imponible) / t), totalBase: t, restoBase: money_(t - money_(f.imponible)), final: (f.anticipo && f.anticipo.final) || '' };
+}
+function invoiceAnticipo_(d, u) {
+  admin_(u);
+  return locked_(() => {
+    const f = read_('Facturas').find(x => x.id === d.id);
+    if (!f) fail_('Factura no encontrada.');
+    f.anticipo = d.quitar ? null : anticipoOf_(f, d.totalBase);
+    update_('Facturas', f);
+    return f;
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -356,7 +385,12 @@ function invoiceSave_(d, u) {
       f = { id: 'f-' + uid_().slice(0, 8), numero: nextNumber_(all, year), estado: 'Pendiente', cobros: [], archivo: '', origen: 'App', por: u.nombre, creado: iso_() };
     }
     Object.assign(f, totals_(lineas, ivaPct, retPct), { fecha: f.origen === 'App' && d.id ? f.fecha : fecha, cliente: party.c.id, datos: datos, lineas: lineas, ivaPct: ivaPct, retPct: retPct, vence: dayOk_(d.vence), notas: clean_(d.notas, 600), servicios: lineas.map(l => l.servicio).filter(Boolean) });
+    if (d.esAnticipo) f.anticipo = anticipoOf_(f, d.totalBase); else if (d.esAnticipo === false) f.anticipo = null;
     if (d.id) update_('Facturas', f); else insert_('Facturas', f);
+    if (d.anticipoDe) {
+      const a = all.find(x => x.id === d.anticipoDe);
+      if (a && a.anticipo) { a.anticipo.final = f.id; update_('Facturas', a); }
+    }
     return f;
   });
   const pdf = invoicePdf_(f);
