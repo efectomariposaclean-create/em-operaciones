@@ -10,7 +10,9 @@
 
 const APP = {
   nombre: 'Efecto Mariposa · Operaciones',
-  version: '2.0.0',
+  version: '2.1.0',
+  appUrl: 'https://efectomariposaclean-create.github.io/em-operaciones/',
+  diasEnlace: 15,          // días que el enlace del particular sigue activo tras la entrega
   zona: 'Europe/Madrid',
   diasArchivo: 60,        // servicios entregados hace más de X días pasan al histórico
   diasJornadasArchivo: 120,
@@ -32,18 +34,19 @@ const TIPOS_INCIDENCIA = ['Suciedad extraordinaria', 'Daño o avería', 'Zona in
 /* ------------------------------------------------------------------ */
 
 const SCHEMA = {
-  Clientes:   ['id', 'nombre', 'tipo', 'protocolo', 'tipos', 'contacto', 'telefono', 'email', 'revisor', 'carpeta', 'activo', 'creado'],
+  Clientes:   ['id', 'nombre', 'tipo', 'protocolo', 'tipos', 'contacto', 'telefono', 'email', 'revisor', 'carpeta', 'activo', 'creado', 'avisos'],
   Usuarios:   ['id', 'nombre', 'rol', 'pin', 'acceso', 'horas', 'activo', 'tokenV', 'empresa', 'creado'],
-  Servicios:  ['id', 'cliente', 'matricula', 'chasis', 'marca', 'modelo', 'vehiculo', 'tipo', 'estado', 'suciedad', 'alcance', 'exterior', 'extras', 'grupos', 'notas', 'fases', 'maquina', 'recibo', 'creadoPor', 'creado', 'actualizado', 'cerrado', 'archivado', 'carpeta', 'version'],
+  Servicios:  ['id', 'cliente', 'matricula', 'chasis', 'marca', 'modelo', 'vehiculo', 'tipo', 'estado', 'suciedad', 'alcance', 'exterior', 'extras', 'grupos', 'notas', 'fases', 'maquina', 'recibo', 'creadoPor', 'creado', 'actualizado', 'cerrado', 'archivado', 'carpeta', 'version', 'enlace', 'listo', 'avisos'],
   Tiempos:    ['id', 'servicio', 'usuario', 'tipo', 'inicio', 'fin', 'motivo'],
-  Incidencias:['id', 'servicio', 'tipo', 'texto', 'bloqueante', 'por', 'fecha', 'resuelta'],
+  Incidencias:['id', 'servicio', 'tipo', 'texto', 'bloqueante', 'por', 'fecha', 'resuelta', 'visible'],
   Fotos:      ['id', 'servicio', 'incidencia', 'tipo', 'visible', 'archivo', 'mini', 'por', 'fecha'],
   Jornadas:   ['id', 'usuario', 'dia', 'inicio', 'fin', 'descansos', 'geo', 'auditoria'],
-  Albaranes:  ['id', 'cliente', 'desde', 'hasta', 'n', 'fecha', 'archivo', 'titulo', 'servicios', 'por'],
+  Albaranes:  ['id', 'cliente', 'desde', 'hasta', 'n', 'fecha', 'archivo', 'titulo', 'servicios', 'por', 'conformidad'],
   Cambios:    ['id', 'fecha', 'usuario', 'servicio', 'motivo', 'antes', 'despues'],
   Actividad:  ['id', 'fecha', 'usuario', 'servicio', 'accion']
 };
-const JSON_COLS = { tipos: 1, acceso: 1, extras: 1, grupos: 1, notas: 1, fases: 1, maquina: 1, recibo: 1, archivado: 1, resuelta: 1, descansos: 1, geo: 1, auditoria: 1, servicios: 1, antes: 1, despues: 1 };
+const JSON_COLS = { tipos: 1, acceso: 1, extras: 1, grupos: 1, notas: 1, fases: 1, maquina: 1, recibo: 1, archivado: 1, resuelta: 1, descansos: 1, geo: 1, auditoria: 1, servicios: 1, antes: 1, despues: 1, avisos: 1, conformidad: 1 };
+const SCHEMA_V = '2';
 const ARCHIVABLES = ['Servicios', 'Tiempos', 'Incidencias', 'Fotos', 'Jornadas', 'Cambios', 'Actividad'];
 
 /* ------------------------------------------------------------------ */
@@ -67,10 +70,10 @@ function instalar() {
   const historico = root.createFolder('Histórico');
   p.setProperties({
     DB: ss.getId(), ROOT: root.getId(), CLIENTES: clientes.getId(), COPIAS: copias.getId(),
-    HISTORICO: historico.getId(), SECRET: secret_(), PEPPER: secret_()
+    HISTORICO: historico.getId(), SECRET: secret_(), PEPPER: secret_(), SCHEMA_V: SCHEMA_V
   });
   const now = iso_();
-  insert_('Clientes', { id: 'k2', nombre: 'Caravaning K2', tipo: 'empresa', protocolo: 'K2', tipos: TIPOS_K2, contacto: '', telefono: '', email: '', revisor: 'Inma', carpeta: '', activo: true, creado: now });
+  insert_('Clientes', { id: 'k2', nombre: 'Caravaning K2', tipo: 'empresa', protocolo: 'K2', tipos: TIPOS_K2, contacto: '', telefono: '', email: '', revisor: 'Inma', carpeta: '', activo: true, creado: now, avisos: true });
   const pin = nuevoPin_([]);
   insert_('Usuarios', { id: 'direccion', nombre: 'Enrique', rol: 'admin', pin: pinHash_(pin), acceso: [], horas: 0, activo: true, tokenV: 1, empresa: '', creado: now });
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
@@ -103,14 +106,17 @@ function doGet() {
 }
 
 function doPost(e) {
-  _ver = null; _ss = null;
+  _ver = null; _ss = null; _mail = [];
   let req;
   try { req = JSON.parse(e.postData.contents); } catch (err) { return out_({ ok: false, error: 'Petición no válida.' }); }
   try {
     const fn = ACTIONS[req.action];
     if (!fn) throw Error('Acción desconocida.');
-    const user = req.action === 'login' ? null : session_(req.token);
+    if (versions_().SCHEMA_V !== SCHEMA_V) migrate_();
+    const open = req.action === 'login' || req.action === 'public' || req.action === 'publicPhoto';
+    const user = open ? null : session_(req.token);
     const data = fn(req.data || {}, user, req);
+    flushMail_();
     return out_({ ok: true, data: data, at: iso_() });
   } catch (err) {
     const msg = String(err && err.message || err);
@@ -146,8 +152,29 @@ const ACTIONS = {
   saveUser: saveUser_,
   resetPin: resetPin_,
   saveClient: saveClient_,
-  systemStatus: systemStatus_
+  systemStatus: systemStatus_,
+  shareLink: shareLink_,
+  receiptConfirm: receiptConfirm_,
+  public: public_,
+  publicPhoto: publicPhoto_
 };
+
+/** Añade a las hojas las columnas nuevas de cada versión (no borra nada). */
+function migrate_() {
+  const l = LockService.getScriptLock();
+  l.waitLock(20000);
+  try {
+    if (props_().getProperty('SCHEMA_V') === SCHEMA_V) return;
+    Object.keys(SCHEMA).forEach(name => {
+      const sh = sheet_(name); if (!sh) return;
+      const cols = SCHEMA[name], have = sh.getLastColumn ? sh.getLastColumn() : cols.length;
+      if (have < cols.length) sh.getRange(1, have + 1, 1, cols.length - have).setValues([cols.slice(have)]).setFontWeight('bold');
+      bump_(name);
+    });
+    props_().setProperty('SCHEMA_V', SCHEMA_V);
+    if (_ver) _ver.SCHEMA_V = SCHEMA_V;
+  } finally { l.releaseLock(); }
+}
 
 /* ------------------------------------------------------------------ */
 /* Utilidades                                                          */
@@ -328,6 +355,7 @@ function participants_(times, sid) {
 function canService_(u, s, clients, times) {
   if (u.rol === 'admin') return true;
   if (!canClient_(u, clientById_(clients, s.cliente))) return false;
+  if (u.rol === 'cliente') return !s.archivado;
   if (!s.cerrado) return true;
   return !!participants_(times, s.id)[u.id] || s.creadoPor === u.id;
 }
@@ -345,6 +373,7 @@ function loadService_(u, id) {
 function publicUser_(x) { return { id: x.id, nombre: x.nombre, rol: x.rol }; }
 
 function sync_(d, u) {
+  if (u.rol === 'cliente') return clientSync_(u);
   const clients = read_('Clientes'), users = read_('Usuarios'), times = read_('Tiempos');
   const limit = Date.now() - (u.rol === 'admin' ? 45 : 30) * 864e5;
   const services = read_('Servicios').filter(s => !s.archivado && (!s.cerrado || Date.parse(s.cerrado) >= limit) && canService_(u, s, clients, times));
@@ -354,15 +383,168 @@ function sync_(d, u) {
   return {
     me: { id: u.id, nombre: u.nombre, rol: u.rol, horas: Number(u.horas) || 0, acceso: u.acceso },
     config: { extras: EXTRAS, tiposGeneral: TIPOS_GENERAL, tiposFoto: TIPOS_FOTO, tiposIncidencia: TIPOS_INCIDENCIA, version: APP.version },
-    clients: visibleClients.map(c => ({ id: c.id, nombre: c.nombre, tipo: c.tipo, protocolo: c.protocolo, tipos: c.tipos || TIPOS_GENERAL, revisor: c.revisor, contacto: u.rol === 'admin' ? c.contacto : '', telefono: u.rol === 'admin' ? c.telefono : '', email: u.rol === 'admin' ? c.email : '', activo: c.activo !== false })),
+    clients: visibleClients.map(c => ({ id: c.id, nombre: c.nombre, tipo: c.tipo, protocolo: c.protocolo, tipos: c.tipos || TIPOS_GENERAL, revisor: c.revisor, contacto: u.rol === 'admin' ? c.contacto : '', telefono: u.rol === 'admin' ? c.telefono : '', email: u.rol === 'admin' ? c.email : '', avisos: c.avisos !== false, activo: c.activo !== false })),
     team: users.filter(x => x.activo || u.rol === 'admin').map(publicUser_),
     users: u.rol === 'admin' ? users.map(x => ({ id: x.id, nombre: x.nombre, rol: x.rol, acceso: x.acceso || [], horas: Number(x.horas) || 0, activo: !!x.activo, empresa: x.empresa || '' })) : [],
     services: services,
     times: times.filter(t => ids[t.servicio]),
-    incidents: read_('Incidencias').filter(i => ids[i.servicio]),
+    incidents: read_('Incidencias').filter(i => ids[i.servicio]).map(i => { i.visible = i.visible !== false; return i; }),
     photos: read_('Fotos').filter(f => ids[f.servicio]).map(f => ({ id: f.id, servicio: f.servicio, incidencia: f.incidencia, tipo: f.tipo, visible: !!f.visible, por: f.por, fecha: f.fecha })),
     now: iso_()
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Vista del cliente: solo lo que puede ver, sin datos internos        */
+/* ------------------------------------------------------------------ */
+
+function etapa_(s) {
+  if (s.cerrado) return 'Entregado';
+  const g = s.grupos || [];
+  const done = x => x.tasks.every(t => t.state !== 'pending' || t.label === 'Albarán firmado');
+  const work = g.filter(x => x.name !== 'Entrega');
+  if (work.length && work.every(done)) return 'Listo';
+  const pre = work.filter(x => x.name !== 'Calidad');
+  if (pre.length && pre.every(done)) return 'Calidad';
+  if (g.some(x => x.name !== 'Recepción' && x.tasks.some(t => t.state === 'done'))) return 'Limpieza';
+  return 'Recibido';
+}
+function clientService_(s, incidents) {
+  let d = 0, n = 0;
+  (s.grupos || []).forEach(g => g.tasks.forEach(t => { n++; if (t.state !== 'pending') d++; }));
+  const r = s.recibo;
+  return {
+    id: s.id, cliente: s.cliente, matricula: s.matricula, chasis: s.chasis, marca: s.marca, modelo: s.modelo, vehiculo: s.vehiculo, tipo: s.tipo,
+    etapa: etapa_(s), aviso: (incidents || []).some(i => i.servicio === s.id && !i.resuelta),
+    creado: s.creado, listo: s.listo || '', cerrado: s.cerrado || '', progreso: [d, n],
+    recibo: r ? { numero: r.numero, signer: r.signer, role: r.role, conformity: r.conformity, observations: r.observations, at: r.at, firma: r.firma } : null
+  };
+}
+function clientIncident_(i) { return { id: i.id, servicio: i.servicio, tipo: i.tipo, texto: i.texto, bloqueante: !!i.bloqueante, fecha: i.fecha, resuelta: i.resuelta ? { text: i.resuelta.text, at: i.resuelta.at } : null }; }
+function clientPhoto_(f) { return { id: f.id, servicio: f.servicio, incidencia: f.incidencia, tipo: f.tipo, fecha: f.fecha, visible: true }; }
+
+function clientSync_(u) {
+  const clients = read_('Clientes').filter(c => canClient_(u, c));
+  const ids = {};
+  clients.forEach(c => ids[c.id] = 1);
+  const limit = Date.now() - 120 * 864e5;
+  const raw = read_('Servicios').filter(s => ids[s.cliente] && !s.archivado && (!s.cerrado || Date.parse(s.cerrado) >= limit));
+  const sid = {};
+  raw.forEach(s => sid[s.id] = 1);
+  const inc = read_('Incidencias').filter(i => sid[i.servicio] && i.visible !== false);
+  return {
+    me: { id: u.id, nombre: u.nombre, rol: 'cliente', acceso: u.acceso },
+    config: { version: APP.version, tiposFoto: TIPOS_FOTO, tiposIncidencia: TIPOS_INCIDENCIA, extras: [], tiposGeneral: [] },
+    clients: clients.map(c => ({ id: c.id, nombre: c.nombre, tipo: c.tipo })),
+    team: [], users: [], times: [],
+    services: raw.map(s => clientService_(s, inc)),
+    incidents: inc.map(clientIncident_),
+    photos: read_('Fotos').filter(f => sid[f.servicio] && f.visible).map(clientPhoto_),
+    now: iso_()
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Enlace privado de seguimiento (particulares)                        */
+/* ------------------------------------------------------------------ */
+
+function linkOf_(s) { return APP.appUrl + '?v=' + s.enlace; }
+function linkExpires_(s) { return s.cerrado ? new Date(Date.parse(s.cerrado) + APP.diasEnlace * 864e5).toISOString() : ''; }
+function publicService_(t) {
+  if (typeof t !== 'string' || !/^[a-f0-9]{24,64}$/.test(t)) fail_('Enlace no válido.');
+  const s = read_('Servicios').find(x => x.enlace === t && !x.archivado);
+  if (!s) fail_('Este enlace no existe o ya no está disponible.');
+  if (s.cerrado && Date.now() > Date.parse(linkExpires_(s))) fail_('Este enlace de seguimiento ha caducado. Si necesitas las fotos o el albarán, pídeselos a Efecto Mariposa.');
+  return s;
+}
+function public_(d) {
+  const s = publicService_(d.t);
+  const inc = read_('Incidencias').filter(i => i.servicio === s.id && i.visible !== false);
+  const c = clientById_(read_('Clientes'), s.cliente) || {};
+  return {
+    client: { id: c.id, nombre: c.nombre, tipo: c.tipo },
+    service: clientService_(s, inc),
+    incidents: inc.map(clientIncident_),
+    photos: read_('Fotos').filter(f => f.servicio === s.id && f.visible).map(clientPhoto_),
+    expires: linkExpires_(s)
+  };
+}
+function publicPhoto_(d) {
+  const s = publicService_(d.t);
+  const p = read_('Fotos').find(f => f.id === d.photoId && f.servicio === s.id && f.visible);
+  if (!p) fail_('Foto no disponible.');
+  const b = DriveApp.getFileById(d.size === 'mini' && p.mini ? p.mini : p.archivo).getBlob();
+  return { data: 'data:' + b.getContentType() + ';base64,' + Utilities.base64Encode(b.getBytes()) };
+}
+function shareLink_(d, u) {
+  if (u.rol === 'cliente') fail_('Sin permiso.');
+  return locked_(() => {
+    const s = loadService_(u, d.id);
+    if (!s.enlace) { s.enlace = secret_().slice(0, 32); update_('Servicios', s); }
+    const c = clientById_(read_('Clientes'), s.cliente) || {};
+    return { url: linkOf_(s), expires: linkExpires_(s), email: c.email || '', telefono: c.telefono || '', cliente: c.nombre || '' };
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Avisos por correo                                                   */
+/* ------------------------------------------------------------------ */
+
+let _mail = [];
+function emailsOf_(c) { return String(c && c.email || '').split(/[\s,;]+/).filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)).slice(0, 5); }
+function notify_(kind, s, extra) {
+  const c = clientById_(read_('Clientes'), s.cliente);
+  if (!c || c.avisos === false) return;
+  const to = emailsOf_(c);
+  if (!to.length) return;
+  s.avisos = s.avisos || [];
+  const key = kind + (extra && extra.key ? ':' + extra.key : '');
+  if (s.avisos.some(a => a.k === key)) return;
+  s.avisos.push({ k: key, at: iso_() });
+  _mail.push({ kind: kind, to: to, client: c, s: JSON.parse(JSON.stringify(s)), extra: extra || {} });
+}
+function flushMail_() {
+  const list = _mail; _mail = [];
+  list.forEach(m => { try { sendMail_(m); } catch (e) { console.error('Correo no enviado: ' + e); } });
+}
+function mailHtml_(title, lines, button, link, foot) {
+  const logo = APP.appUrl + 'icons/logo-header.png';
+  return '<div style="background:#f3f5f6;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;color:#16303f">' +
+    '<div style="max-width:520px;margin:0 auto;background:#fff;border:1px solid #e2e8eb;border-radius:14px;overflow:hidden">' +
+    '<div style="padding:18px 22px;border-bottom:3px solid #ac812e"><img src="' + logo + '" alt="Efecto Mariposa" height="44" style="vertical-align:middle"> <span style="font-size:15px;font-weight:bold;color:#102d48;vertical-align:middle;margin-left:8px">Efecto Mariposa · Clean &amp; Care</span></div>' +
+    '<div style="padding:22px"><h1 style="font-size:19px;margin:0 0 12px;color:#102d48">' + title + '</h1>' + lines.map(l => '<p style="margin:0 0 9px;font-size:14.5px;line-height:1.5">' + l + '</p>').join('') +
+    (link ? '<p style="margin:20px 0 6px"><a href="' + link + '" style="background:#176447;color:#fff;text-decoration:none;padding:12px 20px;border-radius:9px;font-weight:bold;font-size:14.5px;display:inline-block">' + button + '</a></p>' : '') +
+    '</div><div style="padding:14px 22px;background:#f7f9fa;color:#5f7480;font-size:12px;line-height:1.5">' + (foot || 'Recibes este aviso porque Efecto Mariposa está trabajando en tu vehículo.') + '</div></div></div>';
+}
+function sendMail_(m) {
+  const s = m.s, c = m.client, plate = esc_(s.matricula || s.chasis);
+  const particular = c.tipo === 'particular';
+  const link = particular ? linkOf_(s) : APP.appUrl;
+  const btn = particular ? 'Ver el seguimiento' : 'Abrir mi portal';
+  const foot = particular ? 'Enlace privado: no lo compartas. Estará disponible hasta ' + APP.diasEnlace + ' días después de la entrega.' : 'Entra con tu PIN personal en el portal de clientes de Efecto Mariposa.';
+  let subject, html;
+  if (m.kind === 'listo') {
+    subject = 'Tu vehículo ' + (s.matricula || s.chasis) + ' está listo';
+    html = mailHtml_('Vehículo listo · ' + plate, ['Hola, ' + esc_(c.nombre) + ':', 'Hemos terminado la limpieza de <b>' + plate + '</b> (' + esc_(s.tipo) + ') y ha pasado nuestro control de calidad.', 'Puedes ver las fotos del resultado en tu enlace.'], btn, link, foot);
+  } else if (m.kind === 'incidencia') {
+    subject = 'Aviso sobre tu vehículo ' + (s.matricula || s.chasis);
+    html = mailHtml_('Aviso · ' + plate, ['Hola, ' + esc_(c.nombre) + ':', 'Durante el servicio de <b>' + plate + '</b> hemos registrado lo siguiente:', '<b>' + esc_(m.extra.tipo) + '.</b> ' + esc_(m.extra.texto), 'Puedes ver los detalles y las fotos en tu enlace. Si tienes cualquier duda, responde a este correo.'], btn, link, foot);
+  } else if (m.kind === 'entregado') {
+    const r = s.recibo || {};
+    subject = 'Entrega confirmada · ' + (s.matricula || s.chasis);
+    html = mailHtml_('Entrega confirmada · ' + plate, ['Hola, ' + esc_(c.nombre) + ':', 'El vehículo <b>' + plate + '</b> se ha entregado el ' + fmtDate_(s.cerrado) + '.', 'Albarán <b>' + esc_(r.numero) + '</b> · recibido por ' + esc_(r.signer) + ' · ' + esc_(r.conformity) + '.', 'Gracias por confiar en Efecto Mariposa.'], btn, link, foot);
+  } else if (m.kind === 'albaran') {
+    subject = 'Albarán pendiente de conformidad · ' + m.extra.periodo;
+    html = mailHtml_('Albarán del periodo ' + esc_(m.extra.periodo), ['Hola, ' + esc_(c.nombre) + ':', 'Ya tienes disponible el albarán con los <b>' + m.extra.n + ' vehículos</b> entregados en este periodo.', 'Puedes revisarlo, descargarlo y dar tu conformidad desde el portal.'], 'Revisar y dar conformidad', APP.appUrl, 'Entra con tu PIN personal en el portal de clientes de Efecto Mariposa.');
+  } else return;
+  MailApp.sendEmail({ to: m.to.join(','), subject: subject, htmlBody: html, name: 'Efecto Mariposa' });
+}
+
+/** Ejecútalo una vez desde el editor para dar permiso de envío de correos (te llega una prueba). */
+function autorizarCorreo() {
+  const me = Session.getEffectiveUser().getEmail();
+  MailApp.sendEmail({ to: me, subject: 'Prueba de avisos · EM Operaciones', name: 'Efecto Mariposa', htmlBody: mailHtml_('Así verán tus clientes los avisos', ['Este es un correo de prueba.', 'Cuando un vehículo esté listo, tenga una incidencia o se entregue, el cliente recibirá un aviso como este.'], 'Abrir la app', APP.appUrl) });
+  console.log('Correo de prueba enviado a ' + me + '. Quedan ' + MailApp.getRemainingDailyQuota() + ' envíos hoy.');
 }
 
 /* ------------------------------------------------------------------ */
@@ -443,7 +625,7 @@ function createService_(d, u) {
       if (u.rol !== 'admin' && (u.acceso || []).indexOf(PARTICULARES) < 0) fail_('No puedes crear clientes.');
       client = clients.find(c => c.tipo === 'particular' && norm_(c.nombre) === norm_(nombre) && clean_(c.telefono, 40) === clean_(d.newClient.telefono, 40));
       if (!client) {
-        client = { id: 'c-' + uid_().slice(0, 8), nombre: nombre, tipo: 'particular', protocolo: 'general', tipos: TIPOS_GENERAL, contacto: nombre, telefono: clean_(d.newClient.telefono, 40), email: clean_(d.newClient.email, 120), revisor: '', carpeta: '', activo: true, creado: iso_() };
+        client = { id: 'c-' + uid_().slice(0, 8), nombre: nombre, tipo: 'particular', protocolo: 'general', tipos: TIPOS_GENERAL, contacto: nombre, telefono: clean_(d.newClient.telefono, 40), email: clean_(d.newClient.email, 120), revisor: '', carpeta: '', activo: true, creado: iso_(), avisos: true };
         insert_('Clientes', client);
         log_(u, '', 'alta cliente ' + client.id);
       }
@@ -467,7 +649,8 @@ function createService_(d, u) {
       id: id, cliente: client.id, matricula: matricula, chasis: chasis, marca: clean_(d.marca, 80), modelo: clean_(d.modelo, 80),
       vehiculo: clean_(d.vehiculo, 40), tipo: tipo, estado: 'En limpieza', suciedad: clean_(d.suciedad, 30) || 'Normal', alcance: clean_(d.alcance),
       exterior: d.exterior === true, extras: extras, grupos: protocol_(client, tipo, extras, d.exterior === true), notas: [], fases: {},
-      maquina: null, recibo: null, creadoPor: u.id, creado: at, actualizado: at, cerrado: '', archivado: null, carpeta: '', version: 1
+      maquina: null, recibo: null, creadoPor: u.id, creado: at, actualizado: at, cerrado: '', archivado: null, carpeta: '', version: 1,
+      enlace: secret_().slice(0, 32), listo: '', avisos: []
     };
     s.fases[u.id] = 'Recepción';
     const changed = closeUserTimes_(u.id, at, id);
@@ -544,8 +727,17 @@ function serviceOp_(d, u) {
         if (!text) fail_('Describe la incidencia.');
         const iid = safeId_(x.incidentId);
         if (!read_('Incidencias').some(i => i.id === iid)) {
-          insert_('Incidencias', { id: iid, servicio: s.id, tipo: TIPOS_INCIDENCIA.indexOf(x.type) >= 0 ? x.type : 'Otra incidencia', texto: text, bloqueante: !!x.blocking, por: u.id, fecha: at, resuelta: null });
+          const inc = { id: iid, servicio: s.id, tipo: TIPOS_INCIDENCIA.indexOf(x.type) >= 0 ? x.type : 'Otra incidencia', texto: text, bloqueante: !!x.blocking, por: u.id, fecha: at, resuelta: null, visible: x.visible !== false };
+          insert_('Incidencias', inc);
+          if (inc.visible) notify_('incidencia', s, { key: iid, tipo: inc.tipo, texto: inc.texto });
         }
+        break;
+      }
+      case 'incidentVisible': {
+        const i = read_('Incidencias').find(v => v.id === x.incidentId && v.servicio === s.id);
+        if (!i) fail_('Incidencia no encontrada.');
+        i.visible = !!x.visible;
+        update_('Incidencias', i);
         break;
       }
       case 'resolve': {
@@ -590,6 +782,8 @@ function serviceOp_(d, u) {
     s.actualizado = at;
     s.version = (Number(s.version) || 0) + 1;
     if (!s.cerrado) s.estado = status_(s, read_('Tiempos'), read_('Incidencias'));
+    if (!s.cerrado && !s.listo && etapa_(s) === 'Listo') { s.listo = at; notify_('listo', s); }
+    if (op === 'close') notify_('entregado', s);
     update_('Servicios', s);
     refreshStatus_(related.filter(id => id !== s.id));
     if (req) done.put('r:' + req, '1', 21600);
@@ -762,6 +956,11 @@ function history_(d, u) {
     ic.forEach(i => { if (ids[i.servicio]) res.incidents.push(i); });
   });
   if (res.services.length > 400) { res.services = res.services.slice(-400); res.truncated = true; }
+  if (u.rol === 'cliente') {
+    const inc = res.incidents.filter(i => i.visible !== false);
+    res.services = res.services.map(s => { const o = clientService_(s, inc); o.year = s.year; return o; });
+    res.incidents = inc.map(clientIncident_); res.times = [];
+  }
   return res;
 }
 
@@ -772,6 +971,10 @@ function archivedService_(d, u) {
   if (!s) fail_('Servicio no encontrado.');
   const tm = read_('Tiempos', b);
   if (!canService_(u, s, read_('Clientes'), tm)) fail_('Sin permiso.');
+  if (u.rol === 'cliente') {
+    const inc = read_('Incidencias', b).filter(i => i.servicio === s.id && i.visible !== false);
+    return { service: clientService_(s, inc), times: [], incidents: inc.map(clientIncident_), photos: read_('Fotos', b).filter(f => f.servicio === s.id && f.visible).map(clientPhoto_) };
+  }
   return { service: s, times: tm.filter(t => t.servicio === s.id), incidents: read_('Incidencias', b).filter(i => i.servicio === s.id), photos: read_('Fotos', b).filter(f => f.servicio === s.id).map(f => ({ id: f.id, servicio: f.servicio, incidencia: f.incidencia, tipo: f.tipo, visible: !!f.visible, por: f.por, fecha: f.fecha, year: d.year })) };
 }
 
@@ -870,24 +1073,27 @@ function esc_(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ 
 function dataUri_(fileId) { try { const b = DriveApp.getFileById(fileId).getBlob(); return 'data:' + b.getContentType() + ';base64,' + Utilities.base64Encode(b.getBytes()); } catch (e) { return ''; } }
 function fmtDate_(t) { return t ? Utilities.formatDate(new Date(t), APP.zona, 'dd/MM/yyyy') : '—'; }
 
-function receiptCreate_(d, u) {
-  admin_(u); workRange_(d);
-  const client = clientById_(read_('Clientes'), d.cliente);
-  if (!client) fail_('Cliente no válido.');
-  const h = history_({ from: '2000-01-01', to: '2999-12-31', cliente: client.id, status: 'closed' }, u);
-  const services = h.services.filter(s => s.cerrado && day_(s.cerrado) >= d.from && day_(s.cerrado) <= d.to).sort((a, b) => Date.parse(a.cerrado) - Date.parse(b.cerrado));
-  if (!services.length) fail_('No hay servicios entregados en ese periodo.');
+const SYSTEM_ = { id: 'sistema', rol: 'admin', acceso: [] };
+function receiptServices_(clientId, from, to, ids) {
+  const h = history_({ from: '2000-01-01', to: '2999-12-31', cliente: clientId, status: 'closed' }, SYSTEM_);
+  let list = h.services.filter(s => s.cerrado && day_(s.cerrado) >= from && day_(s.cerrado) <= to);
+  if (ids) { const want = {}; ids.forEach(x => want[typeof x === 'string' ? x : x.id] = 1); list = h.services.filter(s => want[s.id]); }
+  return { services: list.sort((a, b) => Date.parse(a.cerrado) - Date.parse(b.cerrado)), times: h.times };
+}
+function receiptPdf_(client, from, to, ref, data, conf, confSig) {
   const users = read_('Usuarios'), name = id => (users.find(x => x.id === id) || {}).nombre || id;
   const fotos = read_('Fotos');
   const logo = dataUri_(APP.logoDriveId);
-  const ref = 'ALB-' + d.from.replace(/-/g, '') + '-' + uid_().slice(0, 4).toUpperCase();
-  const rows = services.map(s => {
-    const team = Object.keys(participants_(h.times, s.id)).map(name).join(', ');
+  const rows = data.services.map(s => {
+    const team = Object.keys(participants_(data.times, s.id)).map(name).join(', ');
     const r = s.recibo || {};
     const firma = r.firma ? (fotos.find(f => f.id === r.firma) || {}).archivo : '';
     const sig = firma ? dataUri_(firma) : '';
     return '<tr><td>' + fmtDate_(s.creado) + '<br><span class="m">' + fmtDate_(s.cerrado) + '</span></td><td><b>' + esc_(s.matricula || '—') + '</b>' + (s.chasis ? '<br><span class="m">' + esc_(s.chasis) + '</span>' : '') + '</td><td>' + esc_([s.marca, s.modelo].filter(Boolean).join(' ') || s.vehiculo || '—') + '</td><td>' + esc_(s.tipo) + '<br><span class="m">' + esc_(team) + '</span></td><td>' + esc_(r.signer || 'Sin firma') + '<br><span class="m">' + esc_(r.conformity || '') + (r.observations ? ' · ' + esc_(r.observations) : '') + '</span>' + (sig ? '<br><img class="sig" src="' + sig + '">' : '') + '</td></tr>';
   }).join('');
+  const confHtml = conf
+    ? '<div class="conf"><b>Conformidad del cliente:</b> ' + esc_(conf.conformity) + ' · ' + esc_(conf.signer) + ' · ' + Utilities.formatDate(new Date(conf.at), APP.zona, 'dd/MM/yyyy HH:mm') + ' · ' + esc_(conf.canal) + (conf.observations ? '<br><b>Observaciones:</b> ' + esc_(conf.observations) : '') + (confSig ? '<br><img class="csig" src="' + confSig + '">' : '') + '</div>'
+    : '<div class="conf pend"><b>Pendiente de conformidad del cliente.</b></div>';
   const html = '<html><head><meta charset="utf-8"><style>' +
     'body{font-family:Arial,Helvetica,sans-serif;color:#193545;font-size:10px;margin:28px}' +
     '.hd{border-bottom:2px solid #ac812e;padding-bottom:10px;margin-bottom:14px}.hd img{height:58px;vertical-align:middle}' +
@@ -896,30 +1102,88 @@ function receiptCreate_(d, u) {
     'table{width:100%;border-collapse:collapse}th{background:#102d48;color:#fff;text-align:left;padding:6px;font-size:9.5px}' +
     'td{border-bottom:1px solid #d8e2e4;padding:6px;vertical-align:top}tr:nth-child(even) td{background:#f5f8f8}.m{color:#526b76;font-size:9px}' +
     '.sig{height:30px;margin-top:3px}.ft{margin-top:16px;color:#526b76;font-size:9px;border-top:1px solid #d8e2e4;padding-top:8px}' +
+    '.conf{margin-top:14px;padding:10px 12px;border:1px solid #b9d9c7;background:#eef7f2;border-radius:6px;font-size:10.5px;line-height:1.5}.conf.pend{border-color:#ecd9a8;background:#fdf8ea}.csig{height:46px;margin-top:6px}' +
     '</style></head><body>' +
     '<div class="hd">' + (logo ? '<img src="' + logo + '">' : '') + '<div class="t"><h1>Albarán de servicios realizados</h1><p>Efecto Mariposa Clean &amp; Care</p></div></div>' +
-    '<p class="meta"><b>Cliente:</b> ' + esc_(client.nombre) + ' &nbsp; · &nbsp; <b>Periodo:</b> ' + fmtDate_(d.from + 'T12:00:00Z') + ' – ' + fmtDate_(d.to + 'T12:00:00Z') + ' &nbsp; · &nbsp; <b>Vehículos:</b> ' + services.length + ' &nbsp; · &nbsp; <b>Ref.:</b> ' + ref + '</p>' +
-    '<table><tr><th>Inicio / entrega</th><th>Matrícula / chasis</th><th>Vehículo</th><th>Servicio / equipo</th><th>Recepción y firma</th></tr>' + rows + '</table>' +
+    '<p class="meta"><b>Cliente:</b> ' + esc_(client.nombre) + ' &nbsp; · &nbsp; <b>Periodo:</b> ' + fmtDate_(from + 'T12:00:00Z') + ' – ' + fmtDate_(to + 'T12:00:00Z') + ' &nbsp; · &nbsp; <b>Vehículos:</b> ' + data.services.length + ' &nbsp; · &nbsp; <b>Ref.:</b> ' + ref + '</p>' +
+    '<table><tr><th>Inicio / entrega</th><th>Matrícula / chasis</th><th>Vehículo</th><th>Servicio / equipo</th><th>Recepción y firma</th></tr>' + rows + '</table>' + confHtml +
     '<p class="ft">Una fila por vehículo entregado. Documento sin importes económicos. Las firmas corresponden al albarán individual firmado en la entrega de cada vehículo.</p>' +
     '</body></html>';
-  const title = 'Albarán ' + client.nombre + ' ' + d.from + ' a ' + d.to;
-  const pdf = Utilities.newBlob(html, MimeType.HTML, title + '.html').getAs(MimeType.PDF).setName(title + '.pdf');
-  const folder = folderNamed_(clientFolder_(client.id), 'Albaranes');
-  const old = folder.getFilesByName(title + '.pdf');
-  while (old.hasNext()) old.next().setTrashed(true);
-  const file = folder.createFile(pdf);
-  return locked_(() => {
-    const rep = { id: ref, cliente: client.id, desde: d.from, hasta: d.to, n: services.length, fecha: iso_(), archivo: file.getId(), titulo: title, servicios: services.map(s => s.id), por: u.id };
-    insert_('Albaranes', rep);
-    return rep;
-  });
+  const title = 'Albarán ' + client.nombre + ' ' + from + ' a ' + to;
+  return { title: title, blob: Utilities.newBlob(html, MimeType.HTML, title + '.html').getAs(MimeType.PDF).setName(title + '.pdf') };
 }
-function receiptList_(d, u) { admin_(u); return read_('Albaranes').slice(-60).reverse(); }
+function saveReceiptFile_(client, pdf, oldId) {
+  const folder = folderNamed_(clientFolder_(client.id), 'Albaranes');
+  if (oldId) { try { DriveApp.getFileById(oldId).setTrashed(true); } catch (e) {} }
+  const old = folder.getFilesByName(pdf.title + '.pdf');
+  while (old.hasNext()) old.next().setTrashed(true);
+  return folder.createFile(pdf.blob);
+}
+
+function receiptCreate_(d, u) {
+  admin_(u); workRange_(d);
+  const client = clientById_(read_('Clientes'), d.cliente);
+  if (!client) fail_('Cliente no válido.');
+  const data = receiptServices_(client.id, d.from, d.to);
+  if (!data.services.length) fail_('No hay servicios entregados en ese periodo.');
+  const ref = 'ALB-' + d.from.replace(/-/g, '') + '-' + uid_().slice(0, 4).toUpperCase();
+  const pdf = receiptPdf_(client, d.from, d.to, ref, data, null, '');
+  const file = saveReceiptFile_(client, pdf, '');
+  const rep = locked_(() => {
+    const r = { id: ref, cliente: client.id, desde: d.from, hasta: d.to, n: data.services.length, fecha: iso_(), archivo: file.getId(), titulo: pdf.title,
+      servicios: data.services.map(s => ({ id: s.id, matricula: s.matricula || s.chasis, tipo: s.tipo, cerrado: s.cerrado })), por: u.id, conformidad: null };
+    insert_('Albaranes', r);
+    return r;
+  });
+  const to = emailsOf_(client);
+  if (client.avisos !== false && to.length) _mail.push({ kind: 'albaran', to: to, client: client, s: {}, extra: { periodo: fmtDate_(d.from + 'T12:00:00Z') + ' – ' + fmtDate_(d.to + 'T12:00:00Z'), n: data.services.length } });
+  return rep;
+}
+function receiptAccess_(u, r) {
+  if (u.rol === 'admin') return true;
+  return canClient_(u, clientById_(read_('Clientes'), r.cliente));
+}
+function receiptList_(d, u) {
+  const all = read_('Albaranes').filter(r => receiptAccess_(u, r));
+  return all.slice(-80).reverse().map(r => { const o = Object.assign({}, r); if (o.conformidad) delete o.conformidad.firma; return o; });
+}
 function receiptFile_(d, u) {
-  admin_(u);
   const r = read_('Albaranes').find(x => x.id === d.id);
-  if (!r) fail_('Albarán no encontrado.');
+  if (!r || !receiptAccess_(u, r)) fail_('Albarán no encontrado.');
   return { name: r.titulo + '.pdf', data: Utilities.base64Encode(DriveApp.getFileById(r.archivo).getBlob().getBytes()) };
+}
+function receiptConfirm_(d, u) {
+  const r0 = read_('Albaranes').find(x => x.id === d.id);
+  if (!r0 || !receiptAccess_(u, r0)) fail_('Albarán no encontrado.');
+  if (r0.conformidad) fail_('Este albarán ya tiene la conformidad registrada.');
+  if (['Conforme', 'Con observaciones'].indexOf(d.conformity) < 0) fail_('Indica si das la conformidad.');
+  const obs = clean_(d.observations, 1500);
+  if (d.conformity === 'Con observaciones' && !obs) fail_('Escribe las observaciones.');
+  const client = clientById_(read_('Clientes'), r0.cliente);
+  const conf = { conformity: d.conformity, observations: obs, at: iso_(), by: u.id };
+  let sig = '';
+  if (u.rol === 'cliente') {
+    conf.signer = u.nombre; conf.canal = 'Confirmado desde el portal del cliente';
+  } else {
+    conf.signer = clean_(d.signer, 120);
+    if (!conf.signer) fail_('Indica el nombre de quien firma.');
+    if (typeof d.signature !== 'string' || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(d.signature) || d.signature.length < 500 || d.signature.length > 1500000) fail_('Falta la firma.');
+    sig = d.signature;
+    conf.canal = 'Firmado en persona';
+    const f = folderNamed_(folderNamed_(clientFolder_(client.id), 'Albaranes'), 'Firmas').createFile(Utilities.newBlob(Utilities.base64Decode(sig.split(',')[1]), 'image/png', r0.id + ' firma.png'));
+    conf.firma = f.getId();
+  }
+  const data = receiptServices_(client.id, r0.desde, r0.hasta, r0.servicios || []);
+  const pdf = receiptPdf_(client, r0.desde, r0.hasta, r0.id, data, conf, sig);
+  const file = saveReceiptFile_(client, pdf, r0.archivo);
+  return locked_(() => {
+    const r = read_('Albaranes').find(x => x.id === d.id);
+    if (r.conformidad) { file.setTrashed(true); fail_('Este albarán ya tiene la conformidad registrada.'); }
+    r.conformidad = conf; r.archivo = file.getId();
+    update_('Albaranes', r);
+    log_(u, '', 'conformidad ' + r.id);
+    return { ok: true };
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -935,7 +1199,8 @@ function saveUser_(d, u) {
     const horas = Number(d.horas) || 0;
     if (!nombre) fail_('Indica el nombre.');
     if (horas < 0 || horas > 60) fail_('Horas semanales no válidas.');
-    const acceso = (Array.isArray(d.acceso) ? d.acceso : []).map(x => clean_(x, 60)).filter(Boolean);
+    let acceso = (Array.isArray(d.acceso) ? d.acceso : []).map(x => clean_(x, 60)).filter(Boolean);
+    if (rol === 'cliente') { acceso = acceso.filter(x => x !== PARTICULARES).slice(0, 1); if (!acceso.length) fail_('Elige el cliente al que pertenece.'); }
     if (d.id) {
       const w = users.find(x => x.id === d.id);
       if (!w) fail_('Usuario no encontrado.');
@@ -980,6 +1245,7 @@ function saveClient_(d, u) {
     c.tipos = tipos.length ? tipos : (c.protocolo === 'K2' ? TIPOS_K2 : TIPOS_GENERAL);
     c.contacto = clean_(d.contacto, 120); c.telefono = clean_(d.telefono, 40); c.email = clean_(d.email, 120); c.revisor = clean_(d.revisor, 80);
     c.activo = d.activo !== false;
+    c.avisos = d.avisos !== false;
     if (d.id) update_('Clientes', c); else insert_('Clientes', c);
     return { id: c.id };
   });

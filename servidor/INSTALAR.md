@@ -46,3 +46,11 @@ En el editor de Apps Script, ejecuta la función `restablecerPinDireccion`. El P
 
 - **Si cambia la app:** la publico yo en GitHub y los móviles se actualizan solos.
 - **Si cambia el servidor:** pegas el código nuevo y vas a **Implementar → Gestionar implementaciones → editar (lápiz) → Versión: Nueva versión**. La URL no cambia.
+
+## Actualizar a la versión 2.1 (portal del cliente)
+
+1. En Apps Script, abre `Código.gs`, borra todo y pega el nuevo `servidor/Codigo.gs` de GitHub. Guarda.
+2. En el desplegable de funciones elige **autorizarCorreo** y pulsa **Ejecutar**. Acepta el permiso nuevo para enviar correos. Te llegará un correo de prueba con el aspecto de los avisos.
+3. Ve a **Implementar → Gestionar implementaciones**, pulsa el lápiz ✏️, cambia **Versión** a **Nueva versión** y pulsa **Implementar**. La dirección `/exec` no cambia.
+
+Las columnas nuevas se añaden solas a tu hoja la primera vez que alguien entra. No se borra nada.

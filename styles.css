@@ -241,3 +241,20 @@ table.t tr.click{cursor:pointer}table.t tr.click:hover td{background:#f8fafb}
 @media (min-width:900px){.hide-d{display:none!important}}
 
 .acc:not([open]) .here:not(.on){display:none}
+/* Portal del cliente */
+.steps{display:flex;align-items:center;margin:12px 0 4px}
+.steps .st{width:20px;height:20px;border-radius:50%;background:#e2e8eb;display:flex;align-items:center;justify-content:center;color:#fff;flex:none}
+.steps .st svg{width:12px;height:12px;stroke-width:3}
+.steps .st.on{background:var(--green)}
+.steps .st.now{background:#fff;border:2.5px solid var(--green)}
+.steps .ln{flex:1;height:2.5px;background:#e2e8eb}.steps .ln.on{background:var(--green)}
+.steps-l{display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint)}
+.steps-l span{flex:1;text-align:center}.steps-l span:first-child{text-align:left}.steps-l span:last-child{text-align:right}
+.steps-l .cur{color:var(--green);font-weight:650}
+.steps-l small{display:block;font-size:10px;color:var(--faint);font-weight:400}
+.hero .steps .st{background:rgba(255,255,255,.18)}.hero .steps .st.on{background:#3fa37a}.hero .steps .st.now{background:var(--navy);border-color:#3fa37a}
+.hero .steps .ln{background:rgba(255,255,255,.18)}.hero .steps .ln.on{background:#3fa37a}
+.hero .steps-l{color:#9fb3c1}.hero .steps-l .cur{color:#fff}.hero .steps-l small{color:#9fb3c1}
+.kpis.kpis3{grid-template-columns:repeat(3,1fr)}
+.kpis3 .kpi{cursor:default}
+@media (min-width:900px){.kpis.kpis3{grid-template-columns:repeat(3,1fr)}}
