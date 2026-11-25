@@ -1,5 +1,5 @@
-const CACHE = 'em-ops-2.0.0';
-const SHELL = ['./', 'index.html', 'styles.css?v=2.0.0', 'app.js?v=2.0.0', 'config.js?v=2.0.0', 'manifest.webmanifest',
+const CACHE = 'em-ops-2.0.1';
+const SHELL = ['./', 'index.html', 'styles.css?v=2.0.1', 'app.js?v=2.0.1', 'config.js?v=2.0.1', 'manifest.webmanifest',
   'icons/logo-header.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/favicon.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {
