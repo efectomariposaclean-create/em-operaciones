@@ -314,3 +314,10 @@ table.t tr.click{cursor:pointer}table.t tr.click:hover td{background:#f8fafb}
 .rep-card .rep-ph{display:flex;align-items:center;gap:12px}
 .rep-card .ithumb.big{width:96px;height:96px}
 .rep-card .rep-ph .btn{flex:1;height:52px}
+.resv{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.resv>div{background:var(--bg);border-radius:10px;padding:8px 10px}
+.resv small{display:block;font-size:11.5px;color:var(--muted)}.resv b{font-size:16px;color:var(--navy)}
+.rep-res{margin-top:12px;border:1px dashed var(--line);border-radius:10px;padding:8px 10px}
+.rep-res summary{cursor:pointer;font-size:13.5px;font-weight:600;color:var(--navy)}
+.rep-match{margin-top:8px;padding:8px 10px;border:1px solid #ecd9a8;background:#fdf9ee;border-radius:10px}
+.rep-match .li{display:flex;align-items:center;gap:10px}

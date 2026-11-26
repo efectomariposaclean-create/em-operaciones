@@ -3,7 +3,7 @@
 'use strict';
 
 const CFG = window.EM_CONFIG || {};
-const VERSION = '3.2.1';
+const VERSION = '3.3.0';
 const ROOT = document.getElementById('root');
 
 /* ============================ Utilidades ============================ */
@@ -1646,6 +1646,7 @@ function artSheet(a) {
   const adm = isAdmin();
   const hist = (S.inv.movimientos || []).filter(m => m.articulo === a.id).slice(-6).reverse();
   sheet(a.nombre, '<div class="row" style="gap:12px;align-items:flex-start">' + invThumb(a, true) + '<div class="grow"><div class="small muted">' + esc([(INV_TIPOS[a.tipo] || [''])[0], a.marca, a.codigo].filter(Boolean).join(' · ')) + '</div>' + (a.funcion ? '<p style="margin-top:4px">' + esc(a.funcion) + '</p>' : '') + '<div class="row" style="gap:8px;margin-top:6px">' + invChip(a) + (a.ubicacion ? '<span class="small muted">' + icon('pin', 's') + ' ' + esc(a.ubicacion) + '</span>' : '') + '</div></div><div style="min-width:80px;text-align:right">' + levelHtml(a) + '</div></div>' +
+    reservaHtml(a) +
     (a.precaucion ? '<div class="banner warn" style="margin-top:12px">' + icon('alert') + '<span class="small">' + esc(a.precaucion) + '</span></div>' : '') +
     (a.notas ? '<p class="small muted" style="margin-top:10px">' + esc(a.notas) + '</p>' : '') +
     (a.compraEstado ? '<p class="small" style="margin-top:10px;color:var(--warn)">' + icon('file', 's') + ' En la lista de compra' + (a.compraMotivo ? ': ' + esc(a.compraMotivo) : '') + '</p>' : '') +
@@ -1654,11 +1655,31 @@ function artSheet(a) {
     (adm ? '<div class="sec"><h2>Dirección</h2></div><div class="two"><button class="btn ghost" data-a="in">' + icon('download', 's') + 'Entrada / compra</button><button class="btn ghost" data-a="adj">' + icon('sliders', 's') + 'Ajustar stock</button></div><div class="two" style="margin-top:8px"><button class="btn ghost" data-a="buy">' + icon('file', 's') + (a.compraEstado ? 'Editar compra' : 'Añadir a la compra') + '</button><button class="btn ghost" data-a="edit">' + icon('edit', 's') + 'Editar ficha</button></div>' +
       (a.tipo === 'maquina' ? '<label class="f">Estado de la máquina</label><div class="chips">' + ['Operativa', 'En revisión', 'Averiada', 'Prestada'].map(x => '<button type="button" data-est="' + x + '" class="' + (norm(a.estado) === norm(x) ? 'on' : '') + '">' + x + '</button>').join('') + '</div>' : '') +
       (a.precio ? '<p class="small muted" style="margin-top:10px">Último precio: ' + money(Number(a.precio)) + (a.medida === 'cantidad' ? ' / ' + esc(a.unidad || 'ud') : '') + '</p>' : '') : '') +
-    (hist.length ? '<div class="sec"><h2>Últimos movimientos</h2></div><div class="list">' + hist.map(m => '<div class="li" style="padding:7px 0"><div class="grow small"><b>' + esc({ consumo: 'Uso', aviso: 'Aviso', entrada: 'Entrada', ajuste: 'Ajuste' }[m.tipo] || m.tipo) + '</b> · ' + esc(m.nivel ? NIVEL_TXT[m.nivel] : (m.cantidad !== '' ? m.cantidad + ' ' + (a.unidad || '') : '')) + (m.nota ? ' · ' + esc(m.nota) : '') + '<div class="tiny muted">' + esc(D.userName(m.usuario)) + ' · ' + esc(fRel(m.fecha)) + '</div></div>' + (m.importe ? '<b class="small">' + money(Number(m.importe)) + '</b>' : '') + '</div>').join('') + '</div>' : ''), (el, close) => {
+    (hist.length ? '<div class="sec"><h2>Últimos movimientos</h2></div><div class="list">' + hist.map(m => '<div class="li" style="padding:7px 0"><div class="grow small"><b>' + esc({ consumo: 'Uso', aviso: 'Aviso', entrada: 'Entrada', ajuste: 'Ajuste', traspaso: 'Traspaso' }[m.tipo] || m.tipo) + '</b> · ' + esc(m.nivel ? NIVEL_TXT[m.nivel] : (m.cantidad !== '' ? m.cantidad + ' ' + (a.unidad || '') : '')) + (m.nota ? ' · ' + esc(m.nota) : '') + '<div class="tiny muted">' + esc(D.userName(m.usuario)) + ' · ' + esc(fRel(m.fecha)) + '</div></div>' + (m.importe ? '<b class="small">' + money(Number(m.importe)) + '</b>' : '') + '</div>').join('') + '</div>' : ''), (el, close) => {
     loadInvThumbs(el);
+    $$('[data-tr]', el).forEach(b => b.onclick = () => { close(); traspasoSheet(a, b.dataset.tr); });
     const act = { use: () => useSheet(a), warn: () => warnSheet(a), in: () => entradaSheet(a), adj: () => ajusteSheet(a), buy: () => compraSheet(a), edit: () => editArt(a), photo: () => artPhoto(a) };
     $$('[data-a]', el).forEach(b => b.onclick = () => { close(); act[b.dataset.a](); });
     $$('[data-est]', el).forEach(b => b.onclick = async () => { close(); await invDo(a.id, { tipo: 'estado', estado: b.dataset.est }, 'Estado actualizado'); });
+  });
+}
+function reservaHtml(a) {
+  const r = Number(a.reserva) || 0;
+  if (!r && !a.reservaUbi) return '';
+  const aqui = a.medida === 'nivel' ? (NIVEL_TXT[a.nivel || ''] || '—') : (a.cantidad === '' ? '—' : a.cantidad + ' ' + (a.unidad || 'uds'));
+  return '<div class="resv"><div><small>En ' + esc(a.ubicacion || 'su sitio') + '</small><b>' + esc(aqui) + '</b></div><div><small>Reserva · ' + esc(a.reservaUbi || 'almacén') + '</small><b>' + r + ' ' + esc(a.unidad || 'uds') + '</b></div></div>' +
+    '<div class="two" style="margin-top:8px"><button class="btn sm green" data-tr="coger" ' + (r ? '' : 'disabled') + '>' + icon('download', 's') + 'Coger de la reserva</button><button class="btn sm ghost" data-tr="devolver">Devolver a la reserva</button></div>';
+}
+function traspasoSheet(a, sentido) {
+  const coger = sentido !== 'devolver';
+  sheet((coger ? 'Coger de la reserva · ' : 'Devolver a la reserva · ') + a.nombre, '<p class="small muted">' + (coger ? 'Pasa de ' + esc(a.reservaUbi || 'la reserva') + ' a ' + esc(a.ubicacion || 'su sitio') + '.' : 'Pasa de ' + esc(a.ubicacion || 'su sitio') + ' a ' + esc(a.reservaUbi || 'la reserva') + '.') + ' Queda registrado a tu nombre.</p>' +
+    '<label class="f">¿Cuántas unidades?</label><div class="row" style="gap:8px"><button type="button" class="btn ghost" id="tm">−</button><input class="in" id="tq" type="number" min="1" value="1" style="text-align:center;font-size:18px"><button type="button" class="btn ghost" id="tp">+</button></div>' +
+    '<label class="f">Para qué (opcional)</label><input class="in" id="tn" placeholder="Servicio K2 de mañana">' +
+    '<div class="actions"><button class="btn green" id="tgo">' + (coger ? 'Lo he cogido' : 'Lo he devuelto') + '</button></div>', (el, close) => {
+    const q = $('#tq', el);
+    $('#tm', el).onclick = () => { q.value = Math.max(1, (Number(q.value) || 1) - 1); };
+    $('#tp', el).onclick = () => { q.value = (Number(q.value) || 0) + 1; };
+    $('#tgo', el).onclick = () => { const body = { tipo: 'traspaso', sentido: sentido, cantidad: Number(q.value) || 1, nota: $('#tn', el).value }; close(); invDo(a.id, body, coger ? 'Anotado: lo has cogido tú' : 'Devuelto a la reserva'); };
   });
 }
 function levelPicker(cur) { return '<div class="seg" id="lv">' + NIVELES.map(n => '<button type="button" data-lv="' + n + '" class="' + (cur === n ? 'on' : '') + '">' + NIVEL_TXT[n] + '</button>').join('') + '</div>'; }
@@ -1730,6 +1751,7 @@ function editArt(a, toBuy) {
     '<label class="f">Cómo se controla</label><div class="seg" id="fmd"><button type="button" data-md="nivel" class="' + (st.medida === 'nivel' ? 'on' : '') + '">Por nivel</button><button type="button" data-md="cantidad" class="' + (st.medida !== 'nivel' ? 'on' : '') + '">Por cantidad</button></div>' +
     '<div id="fcant" ' + (st.medida === 'nivel' ? 'hidden' : '') + '><div class="two"><div><label class="f">Cantidad</label><input class="in" id="fq" type="number" min="0" value="' + esc(st.cantidad) + '"></div><div><label class="f">Unidad</label><input class="in" id="fun" value="' + esc(st.unidad || 'uds') + '"></div></div><label class="f">Mínimo (avisa al llegar aquí)</label><input class="in" id="fmin" type="number" min="0" value="' + esc(st.minimo) + '"></div>' +
     '<div id="fniv" ' + (st.medida === 'nivel' ? '' : 'hidden') + '><label class="f">Nivel actual</label>' + levelPicker(st.nivel) + '</div>' +
+    '<div class="two"><div><label class="f">Reserva (unidades de más)</label><input class="in" id="frs" type="number" min="0" value="' + esc(st.reserva == null ? '' : st.reserva) + '" placeholder="0"></div><div><label class="f">Dónde está la reserva</label><input class="in" id="fru" value="' + esc(st.reservaUbi || '') + '" placeholder="Garaje · estantería"></div></div>' +
     '<label class="f">Precaución de uso</label><textarea class="in" id="fp" style="min-height:60px">' + esc(st.precaucion || '') + '</textarea>' +
     '<div class="two"><div><label class="f">Proveedor</label><input class="in" id="fpr" value="' + esc(st.proveedor || '') + '"></div><div><label class="f">Enlace de compra</label><input class="in" id="fe" value="' + esc(st.enlace || '') + '" placeholder="https://"></div></div>' +
     '<label class="f">Notas</label><input class="in" id="fno" value="' + esc(st.notas || '') + '">' +
@@ -1738,7 +1760,7 @@ function editArt(a, toBuy) {
     $$('[data-md]', el).forEach(b => b.onclick = () => { st.medida = b.dataset.md; $$('[data-md]', el).forEach(x => x.classList.toggle('on', x === b)); $('#fcant').hidden = st.medida === 'nivel'; $('#fniv').hidden = st.medida !== 'nivel'; });
     const lv = mountLevel(el, st.nivel);
     const save = async extra => {
-      const body = Object.assign({ id: a ? a.id : '', nombre: $('#fn').value, tipo: st.tipo, marca: $('#fm').value, ubicacion: $('#fu').value, funcion: $('#ff').value, medida: st.medida, nivel: lv(), cantidad: $('#fq').value, unidad: $('#fun').value, minimo: $('#fmin').value, precaucion: $('#fp').value, proveedor: $('#fpr').value, enlace: $('#fe').value, notas: $('#fno').value }, extra || {});
+      const body = Object.assign({ id: a ? a.id : '', nombre: $('#fn').value, tipo: st.tipo, marca: $('#fm').value, ubicacion: $('#fu').value, funcion: $('#ff').value, medida: st.medida, nivel: lv(), cantidad: $('#fq').value, unidad: $('#fun').value, minimo: $('#fmin').value, precaucion: $('#fp').value, reserva: $('#frs').value, reservaUbi: $('#fru').value, proveedor: $('#fpr').value, enlace: $('#fe').value, notas: $('#fno').value }, extra || {});
       if (!body.nombre.trim()) return toast('Indica el nombre.', true);
       let r; if (await command(async () => { r = await api('invSave', body); }, extra ? 'Dado de baja' : 'Guardado')) { close(); if (extra) S.inv.articulos = S.inv.articulos.filter(x => x.id !== r.id); else invReplace(r); render(); if (toBuy && r && !extra) compraSheet(r); }
     };
@@ -1958,11 +1980,12 @@ VIEWS.repaso = function (r) {
       '<h2 style="margin-top:12px;font-size:17px">' + esc(cur.nombre) + '</h2><p class="small muted">' + esc([(INV_TIPOS[cur.tipo] || [''])[0], cur.marca, cur.funcion].filter(Boolean).join(' · ')) + '</p>' +
       '<label class="f">¿Dónde está guardado?</label><input class="in" id="rub" list="rubl" value="' + esc(cur.ubicacion || '') + '" placeholder="Cajón 3, Estante A…"><datalist id="rubl">' + allUbis.map(u => '<option value="' + esc(u) + '">').join('') + '</datalist>' +
       (cur.tipo === 'maquina' ? '' : lvl ? '<label class="f">¿Cuánto queda?</label>' + levelPicker(cur.nivel) : '<label class="f">¿Cuántos hay? (' + esc(cur.unidad || 'uds') + ')</label><input class="in" id="rq" type="number" min="0" inputmode="numeric" value="' + esc(cur.cantidad) + '">') +
+      '<details class="rep-res" ' + (Number(cur.reserva) || cur.reservaUbi ? 'open' : '') + '><summary>¿Hay más unidades guardadas en otro sitio?</summary><p class="tiny muted">Por ejemplo: vienen 4 cepillos, 1 va en el cajón y 3 se quedan en el almacén.</p><div class="two"><div><label class="f">Unidades de reserva</label><input class="in" id="rrs" type="number" min="0" value="' + esc(cur.reserva == null ? '' : cur.reserva) + '" placeholder="0"></div><div><label class="f">Dónde</label><input class="in" id="rru" list="rubl" value="' + esc(cur.reservaUbi || '') + '" placeholder="Garaje"></div></div></details>' +
       '<div class="two" style="margin-top:14px"><button class="btn ghost" id="rno">' + icon('x', 's') + 'No está aquí</button><button class="btn green" id="rok">' + icon('check', 's') + 'Está · Siguiente</button></div></div>';
   } else {
     html += '<div class="card empty">' + icon('check', 'l') + '<h2>' + esc(sel) + ' revisado</h2><p class="small muted">Todo comprobado. Si has visto algo que no está en la lista, añádelo ahora.</p></div>';
   }
-  html += '<button class="btn soft wide" style="margin-top:10px" id="rnew">' + icon('plus', 's') + 'Añadir lo que falta aquí</button>' +
+  html += '<button class="btn soft wide" style="margin-top:10px" id="rnew">' + icon('search', 's') + 'Buscar o añadir algo que está aquí</button>' +
     '<div class="sec"><h2>En este sitio</h2></div><div class="card list" style="padding:2px 14px">' + list.map(a => '<div class="li irow" data-go="' + esc(a.id) + '" style="' + (cur && a.id === cur.id ? 'background:var(--bg);margin:0 -14px;padding-left:14px;padding-right:14px' : '') + '">' + invThumb(a) + '<div class="grow" style="min-width:0"><b class="ellipsis" style="display:block;font-size:14px">' + esc(a.nombre) + '</b><div class="small muted">' + (a.foto ? 'Con foto' : 'Sin foto') + '</div></div>' + (st.ok[a.id] ? '<span class="chip ok">Está</span>' : st.no[a.id] ? '<span class="chip bad">No está</span>' : '<span class="chip">Pendiente</span>') + '</div>').join('') + '</div>' +
     '<a class="btn ghost wide" style="margin-top:12px" href="#/repaso">' + icon('back', 's') + 'Elegir otro sitio</a>';
   return { title: 'Repaso de almacén', back: true, html: html, mount: el => {
@@ -1977,9 +2000,10 @@ VIEWS.repaso = function (r) {
     $('#rno', el).onclick = () => { const s = repState(); s.no[cur.id] = 1; delete s.ok[cur.id]; repSave(s); next(); };
     $('#rok', el).onclick = async () => {
       const ub = $('#rub', el).value.trim(), lv = getLv ? getLv() : cur.nivel, q = $('#rq', el) ? $('#rq', el).value : cur.cantidad;
-      const changed = ub !== String(cur.ubicacion || '').trim() || (getLv && lv !== cur.nivel) || (!getLv && cur.tipo !== 'maquina' && String(q) !== String(cur.cantidad));
+      const rs = $('#rrs', el).value, ru = $('#rru', el).value.trim();
+      const changed = ub !== String(cur.ubicacion || '').trim() || (getLv && lv !== cur.nivel) || (!getLv && cur.tipo !== 'maquina' && String(q) !== String(cur.cantidad)) || String(rs) !== String(cur.reserva == null ? '' : cur.reserva) || ru !== String(cur.reservaUbi || '');
       if (changed) {
-        let r; if (!(await command(async () => { r = await api('invSave', Object.assign({}, cur, { ubicacion: ub, nivel: lv, cantidad: q })); }))) return;
+        let r; if (!(await command(async () => { r = await api('invSave', Object.assign({}, cur, { ubicacion: ub, nivel: lv, cantidad: q, reserva: rs, reservaUbi: ru })); }))) return;
         invReplace(r);
       }
       if (!cur.foto) toast('Guardado sin foto. Puedes hacerla luego.');
@@ -1992,7 +2016,7 @@ VIEWS.repaso = function (r) {
 function repNew(ubi) {
   let file = null;
   sheet('Añadir lo que falta', '<button class="btn soft wide" id="nph">' + icon('camera') + 'Hacer foto</button><div id="nprev" style="margin-top:8px"></div>' +
-    '<label class="f">Nombre</label><input class="in" id="nn" placeholder="Limpiador de llantas Koch">' +
+    '<label class="f">Nombre</label><input class="in" id="nn" placeholder="Escoba pequeña" autocomplete="off"><div id="nmatch"></div>' +
     '<label class="f">Tipo</label><div class="seg" id="ntp">' + Object.keys(INV_TIPOS).map((t, i) => '<button type="button" data-t="' + t + '" class="' + (t === 'producto' ? 'on' : '') + '">' + INV_TIPOS[t][0] + '</button>').join('') + '</div>' +
     '<div class="two"><div><label class="f">Marca</label><input class="in" id="nm"></div><div><label class="f">Ubicación</label><input class="in" id="nu" value="' + esc(ubi) + '"></div></div>' +
     '<label class="f">¿Cuánto queda?</label>' + levelPicker('lleno') +
@@ -2000,6 +2024,19 @@ function repNew(ubi) {
     let tipo = 'producto';
     $$('[data-t]', el).forEach(b => b.onclick = () => { tipo = b.dataset.t; $$('[data-t]', el).forEach(x => x.classList.toggle('on', x === b)); });
     const lv = mountLevel(el, 'lleno');
+    const nn = $('#nn', el);
+    nn.oninput = () => {
+      const q = norm(nn.value), words = q.split(/\s+/).filter(w => w.length > 2);
+      const m = q.length < 3 ? [] : S.inv.articulos.filter(a => { const t = norm(a.nombre + ' ' + a.marca + ' ' + a.funcion + ' ' + a.notas); return words.some(w => t.indexOf(w.slice(0, Math.max(4, w.length - 2))) >= 0); }).slice(0, 5);
+      $('#nmatch', el).innerHTML = m.length ? '<div class="rep-match"><p class="tiny" style="font-weight:650;color:var(--warn)">¿Es alguno de estos? Ya están en el almacén:</p>' + m.map(a => '<div class="li" style="padding:6px 0">' + invThumb(a) + '<div class="grow" style="min-width:0"><b class="ellipsis" style="display:block;font-size:13.5px">' + esc(a.nombre) + '</b><div class="tiny muted">Ahora en: ' + esc(repUbi(a)) + '</div></div><button type="button" class="btn sm green" data-here="' + esc(a.id) + '">Es este</button></div>').join('') + '</div>' : '';
+      loadInvThumbs($('#nmatch', el));
+      $$('[data-here]', el).forEach(b => b.onclick = async () => {
+        const a = invArt(b.dataset.here), dest = $('#nu', el).value.trim();
+        let r; if (dest && dest !== String(a.ubicacion || '').trim()) { if (!(await command(async () => { r = await api('invSave', Object.assign({}, a, { ubicacion: dest })); }, 'Movido a ' + dest))) return; invReplace(r); }
+        const s2 = repState(); s2.ok[a.id] = 1; delete s2.no[a.id]; repSave(s2);
+        close(); S.ui.repCur = a.id; render();
+      });
+    };
     $('#nph', el).onclick = async () => { const f = await pickCamera(); if (!f.length) return; file = f[0]; const t = await compress(file, 300, 0.7); $('#nprev', el).innerHTML = '<img src="' + t + '" style="width:96px;height:96px;object-fit:cover;border-radius:10px">'; };
     $('#nsv', el).onclick = async () => {
       const nombre = $('#nn', el).value.trim();

@@ -10,7 +10,7 @@
 
 const APP = {
   nombre: 'Efecto Mariposa · Operaciones',
-  version: '3.1.0',
+  version: '3.3.0',
   appUrl: 'https://efectomariposaclean-create.github.io/em-operaciones/',
   diasEnlace: 15,          // días que el enlace del particular sigue activo tras la entrega
   zona: 'Europe/Madrid',
@@ -46,7 +46,7 @@ const SCHEMA = {
   Albaranes:  ['id', 'cliente', 'desde', 'hasta', 'n', 'fecha', 'archivo', 'titulo', 'servicios', 'por', 'conformidad'],
   Cambios:    ['id', 'fecha', 'usuario', 'servicio', 'motivo', 'antes', 'despues'],
   Actividad:  ['id', 'fecha', 'usuario', 'servicio', 'accion'],
-  Articulos:  ['id', 'codigo', 'tipo', 'grupo', 'nombre', 'marca', 'funcion', 'ubicacion', 'medida', 'nivel', 'cantidad', 'unidad', 'minimo', 'estado', 'precaucion', 'notas', 'compraEstado', 'compraPrioridad', 'compraCantidad', 'compraMotivo', 'proveedor', 'enlace', 'precio', 'foto', 'mini', 'activo', 'actualizado'],
+  Articulos:  ['id', 'codigo', 'tipo', 'grupo', 'nombre', 'marca', 'funcion', 'ubicacion', 'medida', 'nivel', 'cantidad', 'unidad', 'minimo', 'estado', 'precaucion', 'notas', 'compraEstado', 'compraPrioridad', 'compraCantidad', 'compraMotivo', 'proveedor', 'enlace', 'precio', 'foto', 'mini', 'activo', 'actualizado', 'reserva', 'reservaUbi'],
   Movimientos:['id', 'fecha', 'articulo', 'tipo', 'cantidad', 'nivel', 'importe', 'categoria', 'concepto', 'servicio', 'usuario', 'nota'],
   Cargas:     ['id', 'nombre', 'base', 'segun', 'no', 'orden'],
   Ubicaciones:['id', 'ubicacion', 'seccion', 'material', 'regla'],
@@ -57,7 +57,7 @@ const SCHEMA = {
 };
 const NOCACHE = { Articulos: 1, Movimientos: 1, Cargas: 1, Ubicaciones: 1 };
 const JSON_COLS = { tipos: 1, acceso: 1, extras: 1, grupos: 1, notas: 1, fases: 1, maquina: 1, recibo: 1, archivado: 1, resuelta: 1, descansos: 1, geo: 1, auditoria: 1, servicios: 1, antes: 1, despues: 1, avisos: 1, conformidad: 1, base: 1, segun: 1, no: 1, crm: 1, tarifa: 1, lineas: 1, cobros: 1, datos: 1, anticipo: 1 };
-const SCHEMA_V = '5';
+const SCHEMA_V = '6';
 const ARCHIVABLES = ['Servicios', 'Tiempos', 'Incidencias', 'Fotos', 'Jornadas', 'Cambios', 'Actividad'];
 
 /* ------------------------------------------------------------------ */
@@ -1376,10 +1376,12 @@ function seedInventario_() {
 }
 function staff_(u) { if (u.rol === 'cliente') fail_('Sin permiso.'); }
 function low_(a) {
-  if (a.medida === 'nivel') return a.nivel === 'poco' || a.nivel === 'agotado';
-  if (a.cantidad === '' || a.cantidad == null) return false;
-  if (Number(a.cantidad) <= 0) return true;
-  return a.minimo !== '' && a.minimo != null && Number(a.cantidad) <= Number(a.minimo);
+  const res = Number(a.reserva) || 0;
+  if (a.medida === 'nivel') return (a.nivel === 'poco' || a.nivel === 'agotado') && res <= 0;
+  if ((a.cantidad === '' || a.cantidad == null) && !res) return false;
+  const tot = (Number(a.cantidad) || 0) + res;
+  if (tot <= 0) return true;
+  return a.minimo !== '' && a.minimo != null && tot <= Number(a.minimo);
 }
 function cleanArt_(a, admin) {
   const o = Object.assign({}, a);
@@ -1417,6 +1419,8 @@ function invSave_(d, u) {
     if (a.medida === 'nivel') { a.nivel = NIVELES.indexOf(d.nivel) >= 0 ? d.nivel : (a.nivel || ''); a.cantidad = ''; }
     else a.cantidad = d.cantidad === '' || d.cantidad == null ? '' : Math.max(0, Number(d.cantidad) || 0);
     a.minimo = d.minimo === '' || d.minimo == null ? '' : Math.max(0, Number(d.minimo) || 0);
+    if (d.reserva !== undefined) a.reserva = d.reserva === '' || d.reserva == null ? '' : Math.max(0, Math.round(Number(d.reserva) || 0));
+    if (d.reservaUbi !== undefined) a.reservaUbi = clean_(d.reservaUbi, 80);
     if (d.activo === false) a.activo = false;
     a.actualizado = iso_();
     if (isNew) insert_('Articulos', a); else update_('Articulos', a);
@@ -1435,6 +1439,20 @@ function invMove_(d, u) {
       if (a.medida === 'nivel') { if (NIVELES.indexOf(d.nivel) < 0) fail_('Indica cómo queda el producto.'); a.nivel = d.nivel; mv.nivel = d.nivel; }
       else { if (!(n > 0)) fail_('Indica la cantidad usada.'); a.cantidad = Math.max(0, (Number(a.cantidad) || 0) - n); mv.cantidad = n; }
       if (low_(a) && !a.compraEstado) { a.compraEstado = 'pendiente'; a.compraMotivo = 'Stock bajo'; a.compraPrioridad = a.compraPrioridad || 'Alta'; }
+    } else if (t === 'traspaso') {
+      const k = n > 0 ? Math.round(n) : 1, res = Number(a.reserva) || 0, donde = a.reservaUbi || 'almacén';
+      if (d.sentido === 'devolver') {
+        if (a.medida !== 'nivel') { if ((Number(a.cantidad) || 0) < k) fail_('No hay tantas unidades en ' + (a.ubicacion || 'su sitio') + '.'); a.cantidad = (Number(a.cantidad) || 0) - k; }
+        a.reserva = res + k;
+        mv.nota = clean_('Devuelto a la reserva (' + donde + ')' + (mv.nota ? ': ' + mv.nota : ''), 300);
+      } else {
+        if (res < k) fail_(res ? 'En la reserva solo quedan ' + res + '.' : 'No queda nada en la reserva.');
+        a.reserva = res - k;
+        if (a.medida === 'nivel') { a.nivel = 'lleno'; mv.nivel = 'lleno'; } else a.cantidad = (Number(a.cantidad) || 0) + k;
+        mv.nota = clean_('Cogido de la reserva (' + donde + ') para ' + (a.ubicacion || 'su sitio') + (mv.nota ? ': ' + mv.nota : ''), 300);
+      }
+      mv.cantidad = k;
+      if (low_(a) && !a.compraEstado) { a.compraEstado = 'pendiente'; a.compraMotivo = 'Sin reserva'; a.compraPrioridad = a.compraPrioridad || 'Alta'; }
     } else if (t === 'aviso' && a.tipo === 'maquina') {
       a.estado = 'En revisión';
       a.notas = clean_(('Aviso de ' + u.nombre + ' (' + day_(at) + '): ' + mv.nota + '. ' + (a.notas || '')), 300);
@@ -1464,7 +1482,7 @@ function invMove_(d, u) {
     }
     a.actualizado = at;
     update_('Articulos', a);
-    if (['consumo', 'aviso', 'entrada', 'ajuste'].indexOf(t) >= 0) insert_('Movimientos', mv);
+    if (['consumo', 'aviso', 'entrada', 'ajuste', 'traspaso'].indexOf(t) >= 0) insert_('Movimientos', mv);
     if (mv.importe && typeof accMirror_ === 'function') accMirror_(mv, u);
     return cleanArt_(a, admin);
   });
