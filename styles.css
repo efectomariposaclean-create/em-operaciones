@@ -321,3 +321,34 @@ table.t tr.click{cursor:pointer}table.t tr.click:hover td{background:#f8fafb}
 .rep-res summary{cursor:pointer;font-size:13.5px;font-weight:600;color:var(--navy)}
 .rep-match{margin-top:8px;padding:8px 10px;border:1px solid #ecd9a8;background:#fdf9ee;border-radius:10px}
 .rep-match .li{display:flex;align-items:center;gap:10px}
+/* v3.4 */
+.search{position:relative}.search .sx{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:none;padding:6px;color:var(--muted);cursor:pointer}
+.chips.scrollx{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.chips.scrollx::-webkit-scrollbar{display:none}.chips.scrollx button{flex:none}
+#imic.rec{background:#fdecec;border-color:var(--bad);color:var(--bad)}
+.iq-w{border-bottom:1px solid var(--line)}.iq-w:last-child{border-bottom:0}.iq-w .li{border-bottom:0!important}
+.iq-act{display:flex;gap:6px;align-items:center;padding:0 0 9px 58px;flex-wrap:wrap}.iq-act .btn{height:30px;font-size:12.5px;padding:0 10px}
+.pcard{padding:12px 14px}.cols>.pcard{margin-top:0}
+.todo{display:flex;gap:6px;align-items:flex-start;margin-top:8px;font-size:13.5px;color:var(--navy);background:#f3f7f5;border-radius:8px;padding:7px 9px}.todo svg{flex:none;margin-top:2px;color:var(--green)}
+.nmore summary{list-style:none;cursor:pointer}.nmore summary::-webkit-details-marker{display:none}.nmore[open] summary{display:none}.nmore p,.tl-i p{font-size:13.5px}
+.tl-more summary{cursor:pointer;margin:4px 0 0 18px}
+.kanban{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;align-items:start}
+.kcol{background:var(--bg);border-radius:12px;padding:8px;min-height:200px;border:2px dashed transparent}.kcol.over{border-color:var(--green)}
+.kh{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:4px 4px 8px;display:flex;justify-content:space-between}
+.kc{display:block;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:6px;text-decoration:none;color:inherit;cursor:grab}
+.kc b{display:block;font-size:13.5px}.kc small{display:block;color:var(--muted);font-size:12px;margin:2px 0 4px}.kc.drag{opacity:.5}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle}.dot.srv{background:var(--green)}.dot.seg{background:var(--gold)}.dot.otro{background:var(--navy)}
+.ag-e.srv{border-left-color:var(--green)}.ag-e.otro{border-left-color:var(--navy)}
+button.ag-h{border:0;background:none;cursor:pointer;width:100%;text-align:left}
+.cal-m{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
+.cal-h{font-size:11px;font-weight:700;color:var(--muted);text-align:center;padding:4px 0}
+.cal-d{min-height:64px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:3px;text-align:left;display:flex;flex-direction:column;gap:2px;cursor:pointer;overflow:hidden}
+.cal-d .n{font-size:12px;font-weight:650;color:var(--navy)}.cal-d.out{opacity:.45}.cal-d.today{border-color:var(--green);box-shadow:inset 0 0 0 1px var(--green)}
+.pill{display:block;font-size:10.5px;line-height:1.3;padding:1px 4px;border-radius:4px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill.srv{background:var(--green)}.pill.seg{background:var(--gold)}.pill.otro{background:var(--navy)}.cal-d .more{font-size:10.5px;color:var(--muted)}
+@media(min-width:900px){.cal-d{min-height:96px}.pill{font-size:11.5px}.cal-w{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}.cal-w .ag-e{flex-direction:column;align-items:flex-start;gap:2px;font-size:13px}}
+.cal-dia{background:#fff;border:1px solid var(--line);border-radius:12px;padding:4px 10px;margin-top:8px}
+.cal-dia .hr{display:flex;gap:10px;border-bottom:1px solid var(--line);min-height:40px;padding:4px 0}.cal-dia .hr:last-child{border-bottom:0}.cal-dia .hr>span{font-size:12px;color:var(--muted);width:42px;flex:none;padding-top:4px}.cal-dia .hr .ag-e{margin-top:0;margin-bottom:4px}
+.iq-w>.li{display:flex;align-items:center;gap:12px;padding:10px 0 6px}
+.kc small{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.iq-w b.ellipsis{white-space:normal;display:-webkit-box!important;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.search input.in{padding-right:34px}.search .sx{right:10px}

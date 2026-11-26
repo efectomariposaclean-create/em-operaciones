@@ -10,7 +10,7 @@
 
 const APP = {
   nombre: 'Efecto Mariposa · Operaciones',
-  version: '3.3.0',
+  version: '3.4.0',
   appUrl: 'https://efectomariposaclean-create.github.io/em-operaciones/',
   diasEnlace: 15,          // días que el enlace del particular sigue activo tras la entrega
   zona: 'Europe/Madrid',
@@ -37,7 +37,7 @@ const TIPOS_INCIDENCIA = ['Suciedad extraordinaria', 'Daño o avería', 'Zona in
 
 const SCHEMA = {
   Clientes:   ['id', 'nombre', 'tipo', 'protocolo', 'tipos', 'contacto', 'telefono', 'email', 'revisor', 'carpeta', 'activo', 'creado', 'avisos', 'nif', 'direccion', 'ritmo', 'ultimo', 'crm', 'tarifa'],
-  Usuarios:   ['id', 'nombre', 'rol', 'pin', 'acceso', 'horas', 'activo', 'tokenV', 'empresa', 'creado', 'email', 'telefono'],
+  Usuarios:   ['id', 'nombre', 'rol', 'pin', 'acceso', 'horas', 'activo', 'tokenV', 'empresa', 'creado', 'email', 'telefono', 'baja'],
   Servicios:  ['id', 'cliente', 'matricula', 'chasis', 'marca', 'modelo', 'vehiculo', 'tipo', 'estado', 'suciedad', 'alcance', 'exterior', 'extras', 'grupos', 'notas', 'fases', 'maquina', 'recibo', 'creadoPor', 'creado', 'actualizado', 'cerrado', 'archivado', 'carpeta', 'version', 'enlace', 'listo', 'avisos'],
   Tiempos:    ['id', 'servicio', 'usuario', 'tipo', 'inicio', 'fin', 'motivo'],
   Incidencias:['id', 'servicio', 'tipo', 'texto', 'bloqueante', 'por', 'fecha', 'resuelta', 'visible'],
@@ -57,7 +57,7 @@ const SCHEMA = {
 };
 const NOCACHE = { Articulos: 1, Movimientos: 1, Cargas: 1, Ubicaciones: 1 };
 const JSON_COLS = { tipos: 1, acceso: 1, extras: 1, grupos: 1, notas: 1, fases: 1, maquina: 1, recibo: 1, archivado: 1, resuelta: 1, descansos: 1, geo: 1, auditoria: 1, servicios: 1, antes: 1, despues: 1, avisos: 1, conformidad: 1, base: 1, segun: 1, no: 1, crm: 1, tarifa: 1, lineas: 1, cobros: 1, datos: 1, anticipo: 1 };
-const SCHEMA_V = '6';
+const SCHEMA_V = '7';
 const ARCHIVABLES = ['Servicios', 'Tiempos', 'Incidencias', 'Fotos', 'Jornadas', 'Cambios', 'Actividad'];
 
 /* ------------------------------------------------------------------ */
@@ -175,7 +175,9 @@ const ACTIONS = {
   invGasto: invGasto_,
   invPhoto: invPhoto_,
   invFoto: invFoto_,
-  invCarga: invCarga_
+  invCarga: invCarga_,
+  deleteUser: deleteUser_,
+  invUbiMerge: invUbiMerge_
 };
 
 /** Añade a las hojas las columnas nuevas de cada versión (no borra nada). */
@@ -414,7 +416,7 @@ function sync_(d, u) {
     config: { extras: EXTRAS, tiposGeneral: TIPOS_GENERAL, tiposFoto: TIPOS_FOTO, tiposIncidencia: TIPOS_INCIDENCIA, vehiculos: VEHICULOS, version: APP.version },
     clients: visibleClients.map(c => ({ id: c.id, nombre: c.nombre, tipo: c.tipo, protocolo: c.protocolo, tipos: c.tipos || TIPOS_GENERAL, revisor: c.revisor, contacto: u.rol === 'admin' ? c.contacto : '', telefono: u.rol === 'admin' ? c.telefono : '', email: u.rol === 'admin' ? c.email : '', avisos: c.avisos !== false, activo: c.activo !== false })),
     team: users.filter(x => x.activo || u.rol === 'admin').map(publicUser_),
-    users: u.rol === 'admin' ? users.map(x => ({ id: x.id, nombre: x.nombre, rol: x.rol, acceso: x.acceso || [], horas: Number(x.horas) || 0, activo: !!x.activo, empresa: x.empresa || '' })) : [],
+    users: u.rol === 'admin' ? users.map(x => ({ id: x.id, nombre: x.nombre, rol: x.rol, acceso: x.acceso || [], horas: Number(x.horas) || 0, activo: !!x.activo, empresa: x.empresa || '', baja: x.baja || '' })) : [],
     services: services,
     times: times.filter(t => ids[t.servicio]),
     incidents: read_('Incidencias').filter(i => ids[i.servicio]).map(i => { i.visible = i.visible !== false; return i; }),
@@ -1235,6 +1237,7 @@ function saveUser_(d, u) {
       const w = users.find(x => x.id === d.id);
       if (!w) fail_('Usuario no encontrado.');
       if (w.id === 'direccion' && (d.activo === false || rol !== 'admin')) fail_('La cuenta de dirección no se puede desactivar.');
+      if (w.baja) fail_('Este perfil está eliminado.');
       const deactivating = w.activo && d.activo === false;
       w.nombre = nombre; w.rol = rol; w.horas = horas; w.acceso = acceso; w.empresa = clean_(d.empresa, 120);
       if (typeof d.activo === 'boolean') w.activo = d.activo;
@@ -1248,6 +1251,36 @@ function saveUser_(d, u) {
     insert_('Usuarios', w);
     log_(u, '', 'alta usuario ' + w.id);
     return { id: w.id, pin: pin, nombre: nombre };
+  });
+}
+/** Elimina el perfil: deja de poder entrar y sale de la lista, pero su nombre se conserva en servicios, fichajes y movimientos. */
+function deleteUser_(d, u) {
+  admin_(u);
+  return locked_(() => {
+    const w = read_('Usuarios').find(x => x.id === d.id);
+    if (!w) fail_('Usuario no encontrado.');
+    if (w.id === 'direccion' || w.id === u.id) fail_('Esta cuenta no se puede eliminar.');
+    if (w.activo) { const ch = closeUserTimes_(w.id, iso_(), null); refreshStatus_(ch); }
+    w.activo = false; w.baja = iso_(); w.pin = 'baja:' + uid_(); w.tokenV = (Number(w.tokenV) || 1) + 1;
+    update_('Usuarios', w);
+    log_(u, '', 'eliminar perfil ' + w.id);
+    return { ok: true };
+  });
+}
+/** Une dos ubicaciones del almacén: todo lo que estaba en «from» pasa a «to». */
+function invUbiMerge_(d, u) {
+  admin_(u);
+  const from = clean_(d.from, 80), to = clean_(d.to, 80);
+  if (!from || !to || from === to) fail_('Elige las dos ubicaciones.');
+  return locked_(() => {
+    let n = 0;
+    read_('Articulos').forEach(a => {
+      let ch = false;
+      if (String(a.ubicacion || '').trim() === from) { a.ubicacion = to; ch = true; }
+      if (String(a.reservaUbi || '').trim() === from) { a.reservaUbi = to; ch = true; }
+      if (ch) { a.actualizado = iso_(); update_('Articulos', a); n++; }
+    });
+    return { n: n };
   });
 }
 function resetPin_(d, u) {

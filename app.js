@@ -3,7 +3,7 @@
 'use strict';
 
 const CFG = window.EM_CONFIG || {};
-const VERSION = '3.3.0';
+const VERSION = '3.4.0';
 const ROOT = document.getElementById('root');
 
 /* ============================ Utilidades ============================ */
@@ -388,7 +388,7 @@ function route() { const h = location.hash.replace(/^#\/?/, ''); const p = h.spl
 function go(path) { if (location.hash !== '#/' + path) location.hash = '#/' + path; else render(); }
 window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
 
-const TABS_ADMIN = [['inicio', 'home', 'Inicio'], ['servicios', 'rv', 'Servicios'], ['incidencias', 'alert', 'Incidencias'], ['jornada', 'clock', 'Jornada'], ['mas', 'grid', 'Más']];
+const TABS_ADMIN = [['inicio', 'home', 'Inicio'], ['servicios', 'rv', 'Servicios'], ['almacen', 'box', 'Almacén'], ['jornada', 'clock', 'Jornada'], ['mas', 'grid', 'Más']];
 const SIDE_ADMIN = [['inicio', 'home', 'Inicio'], ['servicios', 'rv', 'Servicios'], ['incidencias', 'alert', 'Incidencias'], ['jornada', 'clock', 'Mi jornada'], ['almacen', 'box', 'Almacén'], 'Dirección', ['horario', 'calendar', 'Control horario'], ['buscar', 'search', 'Buscar e historial'], ['albaranes', 'file', 'Albaranes'], ['equipo', 'users', 'Equipo'], ['clientes', 'building', 'Clientes'], 'Cuenta', ['ajustes', 'sliders', 'Ajustes'], ['sistema', 'shield', 'Sistema']];
 const SIDE_WORKER = [['inicio', 'home', 'Inicio'], ['servicios', 'rv', 'Servicios'], ['incidencias', 'alert', 'Incidencias'], ['jornada', 'clock', 'Mi jornada'], ['almacen', 'box', 'Almacén'], 'Más', ['buscar', 'history', 'Mi historial'], ['albaranes', 'file', 'Albaranes'], ['ajustes', 'sliders', 'Ajustes']];
 const SIDE_CLIENT = [['inicio', 'rv', 'Mis vehículos'], ['avisos', 'alert', 'Avisos'], ['albaranes', 'file', 'Albaranes'], 'Cuenta', ['buscar', 'history', 'Historial'], ['cuenta', 'user', 'Mi cuenta']];
@@ -455,12 +455,12 @@ function shell() {
   const r = route(), m = me();
   const side = isClient() ? SIDE_CLIENT : (isAdmin() ? SIDE_ADMIN : SIDE_WORKER);
   const inc = isClient() ? D.incidents().filter(i => !i.resuelta).length : openIncidents().length;
-  const tabs = isClient() ? TABS_CLIENT : isAdmin() ? TABS_ADMIN : [['inicio', 'home', 'Inicio'], ['servicios', 'rv', 'Servicios'], ['incidencias', 'alert', 'Incidencias'], ['jornada', 'clock', 'Jornada'], ['mas', 'grid', 'Más']];
+  const tabs = isClient() ? TABS_CLIENT : isAdmin() ? TABS_ADMIN : [['inicio', 'home', 'Inicio'], ['servicios', 'rv', 'Servicios'], ['almacen', 'box', 'Almacén'], ['jornada', 'clock', 'Jornada'], ['mas', 'grid', 'Más']];
   const active = name => {
     const map = isClient() ? { servicio: 'inicio', historico: 'buscar' } : { servicio: 'servicios', nuevo: 'servicios', historico: 'buscar', contacto: 'comercial', ficha: 'clientes', repaso: 'almacen' };
     return (map[r.name] || r.name) === name;
   };
-  const activeTab = name => active(name) || (name === 'mas' && ['almacen', 'horario', 'buscar', 'albaranes', 'equipo', 'clientes', 'ajustes', 'sistema', 'historico', 'panel', 'comercial', 'contacto', 'ficha', 'facturas', 'contabilidad', 'agenda', 'repaso'].indexOf(r.name) >= 0);
+  const activeTab = name => active(name) || (name === 'mas' && ['incidencias', 'horario', 'buscar', 'albaranes', 'equipo', 'clientes', 'ajustes', 'sistema', 'historico', 'panel', 'comercial', 'contacto', 'ficha', 'facturas', 'contabilidad', 'agenda', 'repaso'].indexOf(r.name) >= 0);
   return '<div class="app">' +
     '<aside class="side"><div class="brand"><img src="icons/logo-header.png" alt=""><div><b>Efecto Mariposa</b><small>Operaciones</small></div></div>' +
     side.map(x => Array.isArray(x) ? '<a href="#/' + x[0] + '" class="' + (active(x[0]) ? 'on' : '') + '">' + icon(x[1]) + x[2] + ((x[0] === 'incidencias' || x[0] === 'avisos') && inc ? '<span class="badge">' + inc + '</span>' : '') + '</a>' : '<div class="grp">' + x + '</div>').join('') +
@@ -1155,7 +1155,7 @@ async function punch(op, btn) {
 
 /* ---------- Más ---------- */
 VIEWS.mas = function () {
-  const items = (isAdmin() ? SIDE_ADMIN : SIDE_WORKER).filter(x => Array.isArray(x) && ['inicio', 'servicios', 'incidencias', 'jornada'].indexOf(x[0]) < 0);
+  const items = (isAdmin() ? SIDE_ADMIN : SIDE_WORKER).filter(x => Array.isArray(x) && ['inicio', 'servicios', 'almacen', 'jornada'].indexOf(x[0]) < 0);
   const m = me();
   const html = '<div class="card row" style="gap:12px"><span class="av lg" style="width:44px;height:44px;font-size:15px">' + esc(initials(m.nombre)) + '</span><div class="grow"><b>' + esc(m.nombre) + '</b><div class="small muted">' + (isAdmin() ? 'Dirección · acceso completo' : 'Equipo de limpieza') + '</div></div></div>' +
     '<div class="card list menu" style="margin-top:10px;padding:4px 14px">' + items.map(x => '<a class="li" href="#/' + x[0] + '" style="text-decoration:none;color:inherit"><span class="ic">' + icon(x[1]) + '</span><b class="grow" style="font-weight:600">' + esc(x[2]) + '</b>' + icon('chev', 's') + '</a>').join('') +
@@ -1371,8 +1371,10 @@ async function shareTracking(s) {
 const ROLE_NAMES = { admin: 'Dirección', trabajador: 'Trabajador', subcontrata: 'Subcontrata', cliente: 'Cliente' };
 VIEWS.equipo = function () {
   if (!isAdmin()) return VIEWS.inicio();
-  const users = S.data.users.slice().sort((a, b) => (b.activo - a.activo) || a.nombre.localeCompare(b.nombre, 'es'));
+  const all = S.data.users.slice().sort((a, b) => (b.activo - a.activo) || a.nombre.localeCompare(b.nombre, 'es'));
+  const users = all.filter(u => !u.baja), bajas = all.filter(u => u.baja);
   const html = '<button class="btn green wide" id="unew">' + icon('plus') + 'Añadir persona</button><div class="card list" style="margin-top:12px;padding:4px 14px">' + users.map(u => '<div class="li" data-u="' + esc(u.id) + '" style="cursor:pointer;' + (u.activo ? '' : 'opacity:.55') + '"><span class="av lg">' + esc(initials(u.nombre)) + '</span><div class="grow"><b>' + esc(u.nombre) + '</b><div class="small muted ellipsis">' + ROLE_NAMES[u.rol] + (u.horas ? ' · ' + u.horas + ' h/sem' : '') + ' · ' + esc(accessText(u)) + '</div></div>' + (u.activo ? '' : '<span class="chip">Inactivo</span>') + icon('chev', 's') + '</div>').join('') + '</div>' +
+    (bajas.length ? '<details class="card" style="margin-top:12px"><summary style="cursor:pointer;font-weight:650">Perfiles eliminados · ' + bajas.length + '</summary><p class="tiny muted" style="margin-top:6px">Ya no pueden entrar. Su nombre se mantiene en los servicios, fichajes y movimientos que hicieron.</p><div class="list">' + bajas.map(u => '<div class="li" style="padding:6px 0"><span class="grow small">' + esc(u.nombre) + '</span><span class="tiny muted">' + esc(ROLE_NAMES[u.rol] || u.rol) + ' · baja ' + esc(fDate(u.baja)) + '</span></div>').join('') + '</div></details>' : '') +
     '<p class="tiny muted" style="margin-top:10px">Cada persona entra con su PIN personal. Solo ve los clientes que le asignes.</p>';
   return { title: 'Equipo', back: true, html: html, mount: el => {
     $('#unew').onclick = () => editUser(null);
@@ -1397,8 +1399,10 @@ function editUser(u) {
     '<div id="uhw" ' + (st.rol === 'cliente' ? 'hidden' : '') + '><label class="f">Horas semanales de contrato</label><input class="in" id="uh" type="number" min="0" max="60" value="' + esc(st.horas || 0) + '"></div>' +
     '<p class="tiny muted" id="ucl" style="margin-top:10px" ' + (st.rol === 'cliente' ? '' : 'hidden') + '>' + icon('lock', 's') + ' Solo verá los vehículos de su empresa: avance, fotos e incidencias visibles y albaranes. Nunca ve trabajadores, horas ni notas internas.</p>' +
     (u && !isDir ? '<div class="row between" style="margin-top:14px"><b style="font-size:14px">Acceso activo</b><label class="switch"><input type="checkbox" id="uact" ' + (st.activo ? 'checked' : '') + '><span></span></label></div>' : '') +
+    (u && !isDir && u.id !== me().id ? '<button class="btn danger wide" id="udel" style="margin-top:14px">' + icon('trash', 's') + 'Eliminar perfil</button><p class="tiny muted" style="margin-top:4px">No podrá volver a entrar. Lo que hizo (servicios, fichajes, almacén) se queda registrado con su nombre.</p>' : '') +
     '<div class="actions">' + (u && !isDir && u.activo ? '<button class="btn ghost" id="upin">' + icon('key', 's') + 'Nuevo PIN</button>' : '') + '<button class="btn" id="usv">Guardar</button></div>', (el, close) => {
     $$('[data-r]', el).forEach(b => b.onclick = () => { st.rol = b.dataset.r; $$('[data-r]', el).forEach(x => x.classList.toggle('on', x === b)); $('#uemp').hidden = st.rol !== 'subcontrata'; $('#uacc').hidden = st.rol === 'admin'; $('#uhw').hidden = st.rol === 'cliente'; $('#ucl').hidden = st.rol !== 'cliente'; $('#ual').textContent = st.rol === 'cliente' ? 'Empresa a la que pertenece' : 'Clientes a los que tiene acceso'; $('[data-a="PARTICULARES"]', el).hidden = st.rol === 'cliente'; if (st.rol === 'cliente') { st.acceso = st.acceso.filter(x => x !== 'PARTICULARES').slice(0, 1); $$('[data-a]', el).forEach(x => x.classList.toggle('on', st.acceso.indexOf(x.dataset.a) >= 0)); } });
+    const ud = $('#udel', el); if (ud) ud.onclick = async () => { if (!(await confirmSheet('Eliminar a ' + u.nombre, 'Su PIN deja de valer para siempre y sale de la lista. Todo lo que registró se conserva con su nombre.', 'Eliminar', true))) return; if (await command(async () => { await api('deleteUser', { id: u.id }); await sync(true); }, 'Perfil eliminado')) { close(); render(); } };
     $$('[data-a]', el).forEach(b => b.onclick = () => { if (st.rol === 'cliente') { st.acceso = [b.dataset.a]; $$('[data-a]', el).forEach(x => x.classList.toggle('on', x === b)); return; } const i = st.acceso.indexOf(b.dataset.a); if (i >= 0) st.acceso.splice(i, 1); else st.acceso.push(b.dataset.a); b.classList.toggle('on'); });
     if (st.rol === 'cliente') $('[data-a="PARTICULARES"]', el).hidden = true;
     const pinBtn = $('#upin');
@@ -1559,15 +1563,48 @@ VIEWS.almacen = function () {
     '<div class="seg" style="margin:12px 0">' + tabs.map(t => '<button class="' + (tab === t[0] ? 'on' : '') + '" data-it="' + t[0] + '">' + esc(t[1]) + '</button>').join('') + '</div>' + body;
   return { title: 'Almacén', back: false, html: html, mount: el => mountInv(el) };
 };
+const STOP = ['DE', 'LA', 'EL', 'LOS', 'LAS', 'PARA', 'CON', 'Y', 'EN', 'DEL', 'UN', 'UNA', 'POR'];
+function words(v) {
+  return String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().split(/[^A-Z0-9]+/).filter(w => w && STOP.indexOf(w) < 0)
+    .map(w => w.length > 4 && /ES$/.test(w) ? w.slice(0, -2) : w.length > 3 && /S$/.test(w) ? w.slice(0, -1) : w);
+}
+function invScore(a, qw) {
+  if (!qw.length) return 1;
+  const name = words(a.nombre + ' ' + a.marca), rest = words([a.funcion, a.ubicacion, a.reservaUbi, a.notas, a.grupo, a.codigo, (INV_TIPOS[a.tipo] || [''])[0]].join(' '));
+  let sc = 0;
+  for (const q of qw) {
+    const hit = h => h.indexOf(q) === 0 || (q.length >= 4 && q.indexOf(h) === 0 && h.length >= 4);
+    if (name.some(hit)) sc += 3; else if (rest.some(hit)) sc += 1; else return 0;
+  }
+  return sc;
+}
+function invUbis() {
+  const c = {};
+  S.inv.articulos.forEach(a => [a.ubicacion, a.reservaUbi].forEach(u => { u = String(u || '').trim(); if (u) c[u] = (c[u] || 0) + 1; }));
+  return c;
+}
 function invStockHtml() {
-  const q = norm(S.ui.invQ || ''), tipo = S.ui.invTipo || '', only = !!S.ui.invOnly;
-  let list = S.inv.articulos.filter(a => (!tipo || a.tipo === tipo) && (!only || a.bajo || a.compraEstado) && (!q || norm(a.nombre + a.marca + a.ubicacion + a.funcion + a.codigo).indexOf(q) >= 0));
+  const qw = words(S.ui.invQ || ''), tipo = S.ui.invTipo || '', f = S.ui.invF || '', sitio = S.ui.invSitio || '';
+  let list = S.inv.articulos.filter(a => (!tipo || a.tipo === tipo) && (!sitio || String(a.ubicacion || '').trim() === sitio || String(a.reservaUbi || '').trim() === sitio) &&
+    (f !== 'falta' || a.bajo || a.compraEstado) && (f !== 'foto' || !a.foto) && (f !== 'reserva' || Number(a.reserva) > 0));
+  const flat = qw.length || sitio;
+  if (qw.length) list = list.map(a => [a, invScore(a, qw)]).filter(x => x[1] > 0).sort((x, y) => y[1] - x[1] || x[0].nombre.localeCompare(y[0].nombre, 'es')).map(x => x[0]);
   const order = ['producto', 'consumible', 'material', 'maquina'];
-  const groups = order.map(t => [t, list.filter(a => a.tipo === t).sort((x, y) => (y.bajo - x.bajo) || x.nombre.localeCompare(y.nombre, 'es'))]).filter(g => g[1].length);
-  return '<div class="row" style="gap:8px"><div class="search grow">' + icon('search', 's') + '<input class="in" id="iq" placeholder="Buscar producto, material o máquina" value="' + esc(S.ui.invQ || '') + '" autocomplete="off"></div>' + (isAdmin() ? '<button class="btn green" id="inew" aria-label="Nuevo artículo">' + icon('plus') + '<span class="hide-m">Nuevo</span></button>' : '') + '</div>' +
-    '<div class="chips" style="margin-top:10px"><button class="' + (!tipo ? 'on' : '') + '" data-tp="">Todo</button>' + order.map(t => '<button class="' + (tipo === t ? 'on' : '') + '" data-tp="' + t + '">' + INV_TIPOS[t][0] + '</button>').join('') + '<button class="' + (only ? 'on' : '') + '" id="ionly">' + icon('alert', 's') + ' Lo que falta</button></div>' +
-    (groups.length ? groups.map(g => '<div class="sec"><h2>' + INV_TIPOS[g[0]][0] + ' · ' + g[1].length + '</h2></div><div class="card list" style="padding:2px 14px">' + g[1].map(invRow).join('') + '</div>').join('') : empty('search', 'Nada que mostrar', only ? 'No falta nada. ¡Todo en orden!' : 'Prueba con otra búsqueda.')) +
-    '<p class="tiny muted" style="text-align:center;margin-top:12px">Toca un artículo para registrar lo que usas o avisar de que se acaba.</p>';
+  const groups = flat ? [] : order.map(t => [t, list.filter(a => a.tipo === t).sort((x, y) => (y.bajo - x.bajo) || x.nombre.localeCompare(y.nombre, 'es'))]).filter(g => g[1].length);
+  const ubis = Object.keys(invUbis()).sort((a, b) => a.localeCompare(b, 'es'));
+  const voice = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+  const sug = !qw.length && !sitio && !f ? '' : '';
+  return '<div class="row" style="gap:8px"><div class="search grow">' + icon('search', 's') + '<input class="in" id="iq" placeholder="Busca: cepillo suave, bastoncillos, cajón 3…" value="' + esc(S.ui.invQ || '') + '" autocomplete="off" enterkeyhint="search">' + (S.ui.invQ ? '<button class="sx" id="iqx" aria-label="Borrar">' + icon('x', 's') + '</button>' : '') + '</div>' + (voice ? '<button class="btn ghost" id="imic" aria-label="Buscar por voz">' + icon('mic') + '</button>' : '') + (isAdmin() ? '<button class="btn green" id="inew" aria-label="Nuevo artículo">' + icon('plus') + '</button>' : '') + '</div>' +
+    '<div class="chips scrollx" style="margin-top:10px"><button class="' + (!tipo ? 'on' : '') + '" data-tp="">Todo</button>' + order.map(t => '<button class="' + (tipo === t ? 'on' : '') + '" data-tp="' + t + '">' + INV_TIPOS[t][0] + '</button>').join('') + '</div>' +
+    '<div class="row" style="gap:8px;margin-top:8px"><select class="in" id="isit" style="flex:1;min-width:0;height:38px;font-size:13.5px"><option value="">' + icon('pin', 's').replace(/<[^>]+>/g, '') + 'Sitio: todos</option>' + ubis.map(u => '<option ' + (u === sitio ? 'selected' : '') + '>' + esc(u) + '</option>').join('') + '</select>' +
+    '<div class="chips" style="flex-wrap:nowrap">' + [['falta', 'Falta'], ['reserva', 'Reserva'], ['foto', 'Sin foto']].map(x => '<button class="' + (f === x[0] ? 'on' : '') + '" data-ff="' + x[0] + '">' + x[1] + '</button>').join('') + '</div></div>' +
+    (flat ? (list.length ? '<div class="sec"><h2>' + list.length + ' resultado' + (list.length === 1 ? '' : 's') + (sitio ? ' en ' + esc(sitio) : '') + '</h2>' + (qw.length || sitio || f ? '<button class="link" id="iclr">Quitar filtros</button>' : '') + '</div><div class="card list" style="padding:2px 14px">' + list.map(invRowQ).join('') + '</div>' : empty('search', 'No lo encuentro', 'Prueba con otra palabra (marca, para qué sirve o dónde está).' + (isAdmin() ? ' Si no existe, créalo con el botón +.' : ''))) :
+      (groups.length ? groups.map(g => '<div class="sec"><h2>' + INV_TIPOS[g[0]][0] + ' · ' + g[1].length + '</h2></div><div class="card list" style="padding:2px 14px">' + g[1].map(invRowQ).join('') + '</div>').join('') : empty('search', 'Nada que mostrar', 'Prueba con otro filtro.'))) +
+    '<p class="tiny muted" style="text-align:center;margin-top:12px">Toca un artículo para ver su ficha, o usa los botones rápidos.</p>';
+}
+function invRowQ(a) {
+  const res = Number(a.reserva) || 0;
+  return '<div class="iq-w">' + invRow(a) + '<div class="iq-act">' + (a.tipo === 'maquina' ? '<button class="btn sm ghost" data-qa="warn" data-qid="' + esc(a.id) + '">Avisar</button>' : '<button class="btn sm ghost" data-qa="use" data-qid="' + esc(a.id) + '">He usado</button>') + (res ? '<button class="btn sm ghost" data-qa="coger" data-qid="' + esc(a.id) + '">Coger de reserva (' + res + ')</button>' : '') + '<span class="tiny muted grow" style="text-align:right">' + (res ? 'Reserva: ' + esc(a.reservaUbi || 'almacén') : '') + '</span></div></div>';
 }
 function invRepasoBanner() {
   if (!isAdmin()) return '';
@@ -1617,10 +1654,24 @@ function mountInv(el) {
   $$('[data-it]', el).forEach(b => b.onclick = () => { S.ui.invTab = b.dataset.it; if (b.dataset.only) S.ui.invOnly = true; saveUi(); render(); });
   $$('[data-tp]', el).forEach(b => b.onclick = () => { S.ui.invTipo = b.dataset.tp; saveUi(); render(); });
   const on = $('#ionly'); if (on) on.onclick = () => { S.ui.invOnly = !S.ui.invOnly; saveUi(); render(); };
+  $$('[data-ff]', el).forEach(b => b.onclick = () => { S.ui.invF = S.ui.invF === b.dataset.ff ? '' : b.dataset.ff; saveUi(); render(); });
+  const sit = $('#isit'); if (sit) sit.onchange = () => { S.ui.invSitio = sit.value; saveUi(); render(); };
+  const clr = $('#iclr'); if (clr) clr.onclick = () => { S.ui.invQ = ''; S.ui.invSitio = ''; S.ui.invF = ''; S.ui.invTipo = ''; saveUi(); render(); };
+  const qx = $('#iqx'); if (qx) qx.onclick = () => { S.ui.invQ = ''; saveUi(); render(); const n = $('#iq'); if (n) n.focus(); };
+  const mic = $('#imic'); if (mic) mic.onclick = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition; const r = new SR();
+    r.lang = 'es-ES'; r.interimResults = false; r.maxAlternatives = 1;
+    mic.classList.add('rec'); toast('Te escucho…');
+    r.onresult = e => { S.ui.invQ = e.results[0][0].transcript; saveUi(); render(); };
+    r.onerror = () => toast('No te he entendido. Prueba otra vez.', true);
+    r.onend = () => mic.classList.remove('rec');
+    r.start();
+  };
+  $$('[data-qa]', el).forEach(b => b.onclick = e => { e.stopPropagation(); const a = invArt(b.dataset.qid); if (b.dataset.qa === 'use') useSheet(a); else if (b.dataset.qa === 'warn') warnSheet(a); else traspasoSheet(a, 'coger'); });
   const qi = $('#iq');
   if (qi) { let t; qi.oninput = () => { clearTimeout(t); t = setTimeout(() => { S.ui.invQ = qi.value; saveUi(); const p = qi.selectionStart; render(); const n = $('#iq'); n.focus(); n.setSelectionRange(p, p); }, 250); }; }
   const nw = $('#inew'); if (nw) nw.onclick = () => editArt(null);
-  $$('[data-art]', el).forEach(r => r.onclick = () => artSheet(invArt(r.dataset.art)));
+  $$('[data-art]', el).forEach(r => r.onclick = e => { if (e.target.closest('[data-qa]')) return; artSheet(invArt(r.dataset.art)); });
   $$('[data-bp]', el).forEach(b => b.onclick = () => invDo(b.dataset.bp, { tipo: 'pedido' }, 'Marcado como pedido'));
   $$('[data-bq]', el).forEach(b => b.onclick = () => invDo(b.dataset.bq, { tipo: 'quitar' }, 'Quitado de la compra'));
   $$('[data-br]', el).forEach(b => b.onclick = () => entradaSheet(invArt(b.dataset.br)));
@@ -1956,13 +2007,14 @@ VIEWS.repaso = function (r) {
       '<p class="small muted" style="margin-top:8px">' + conFoto + ' con foto · ' + noEsta.length + ' no encontrados · ' + nuevos.length + ' añadidos</p>' +
       '<p class="small" style="margin-top:8px">Elige un sitio y ve artículo por artículo: foto, nivel y siguiente.</p></div>' +
       '<div class="card list" style="padding:2px 14px">' + names.map(n => { const l = ubis[n], f = l.filter(a => a.foto).length, d = l.filter(a => st.ok[a.id] || st.no[a.id]).length; return '<a class="li row-l" href="#/repaso/' + encodeURIComponent(n) + '">' + icon(n === 'Sin ubicación' ? 'alert' : 'pin', 's') + '<div class="grow" style="min-width:0"><b class="ellipsis" style="display:block">' + esc(n) + '</b><div class="small muted">' + l.length + ' artículos · ' + f + ' con foto</div></div>' + (d === l.length ? '<span class="chip ok">Hecho</span>' : '<span class="chip">' + d + '/' + l.length + '</span>') + '</a>'; }).join('') + '</div>' +
-      '<button class="btn green wide" style="margin-top:12px" id="rnew">' + icon('plus') + 'Añadir lo que falta</button>' +
+      '<div class="two" style="margin-top:12px"><button class="btn green" id="rnew">' + icon('plus') + 'Añadir lo que falta</button><button class="btn ghost" id="rubi">' + icon('pin') + 'Unificar sitios</button></div>' +
       (noEsta.length ? '<div class="sec"><h2>No encontrados · ' + noEsta.length + '</h2></div><div class="card list" style="padding:2px 14px">' + noEsta.map(a => '<div class="li irow" data-art="' + esc(a.id) + '">' + invThumb(a) + '<div class="grow" style="min-width:0"><b class="ellipsis" style="display:block;font-size:14px">' + esc(a.nombre) + '</b><div class="small muted">Debería estar en: ' + esc(repUbi(a)) + '</div></div></div>').join('') + '</div><p class="tiny muted" style="margin-top:6px">Tócalo para cambiarle la ubicación o darlo de baja si ya no lo tienes.</p>' : '') +
       (nuevos.length ? '<div class="sec"><h2>Añadidos en el repaso · ' + nuevos.length + '</h2></div><div class="card list" style="padding:2px 14px">' + nuevos.map(a => '<div class="li irow" data-art="' + esc(a.id) + '">' + invThumb(a) + '<div class="grow" style="min-width:0"><b class="ellipsis" style="display:block;font-size:14px">' + esc(a.nombre) + '</b><div class="small muted">' + esc(repUbi(a)) + '</div></div></div>').join('') + '</div>' : '') +
       (revis ? '<button class="btn ghost wide" style="margin-top:14px" id="rreset">Empezar un repaso nuevo</button>' : '');
     return { title: 'Repaso de almacén', back: true, html: html, mount: el => {
       loadInvThumbs(el);
       $('#rnew', el).onclick = () => repNew('');
+      $('#rubi', el).onclick = ubiSheet;
       $$('[data-art]', el).forEach(x => x.onclick = () => editArt(invArt(x.dataset.art)));
       const rs = $('#rreset', el); if (rs) rs.onclick = async () => { if (await confirmSheet('Empezar de nuevo', 'Se borran las marcas de revisado. Las fotos y los datos se quedan.', 'Empezar')) { repSave({ ok: {}, no: {}, nuevos: [] }); render(); } };
     } };
@@ -2013,6 +2065,17 @@ VIEWS.repaso = function (r) {
     };
   } };
 };
+function ubiSheet() {
+  const c = invUbis(), names = Object.keys(c).sort((a, b) => a.localeCompare(b, 'es'));
+  sheet('Unificar sitios', '<p class="small muted">Hay ' + names.length + ' sitios distintos. Si dos son el mismo con otro nombre, elige con cuál se une: todo lo de uno pasa al otro.</p><div class="list" style="margin-top:8px">' +
+    names.map(n => '<div class="li" style="padding:8px 0"><div class="grow" style="min-width:0"><b class="ellipsis" style="display:block;font-size:14px">' + esc(n) + '</b><div class="tiny muted">' + c[n] + ' artículo' + (c[n] === 1 ? '' : 's') + '</div></div><select class="in sm-sel" data-ub="' + esc(n) + '" style="max-width:46%"><option value="">Unir con…</option>' + names.filter(x => x !== n).map(x => '<option>' + esc(x) + '</option>').join('') + '</select></div>').join('') + '</div>', (el, close) => {
+    $$('[data-ub]', el).forEach(sel => sel.onchange = async () => {
+      const from = sel.dataset.ub, to = sel.value; if (!to) return;
+      if (!(await confirmSheet('Unir sitios', 'Todo lo de «' + from + '» pasará a «' + to + '».', 'Unir'))) { sel.value = ''; return; }
+      let r; if (await command(async () => { r = await api('invUbiMerge', { from: from, to: to }); }, 'Unidos')) { close(); await loadInv(true); ubiSheet(); }
+    });
+  });
+}
 function repNew(ubi) {
   let file = null;
   sheet('Añadir lo que falta', '<button class="btn soft wide" id="nph">' + icon('camera') + 'Hacer foto</button><div id="nprev" style="margin-top:8px"></div>' +
@@ -2076,6 +2139,7 @@ SIDE_ADMIN.splice(SIDE_ADMIN.indexOf('Dirección'), 0, 'Empresa', ['panel', 'cha
 for (let i = SIDE_ADMIN.length - 1; i >= 0; i--) if (Array.isArray(SIDE_ADMIN[i]) && SIDE_ADMIN[i][0] === 'clientes' && i > SIDE_ADMIN.indexOf('Dirección')) SIDE_ADMIN.splice(i, 1);
 Object.assign(ICONS, {
   chart: '<path d="M4 19h16M7 16V10M12 16V5M17 16v-4"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
   target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
   euro: '<path d="M17 6.5A7 7 0 1 0 17 17.5"/><path d="M4 10h9M4 14h9"/>',
   calc: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15v3M8 18h4"/>',
@@ -2100,6 +2164,32 @@ const C = {
   q: day => Math.floor((Number(String(day).slice(5, 7)) - 1) / 3) + 1,
   activos: () => ((S.crm && S.crm.contactos) || []).filter(c => !c.cliente && ['Ganado', 'Perdido', 'Archivado'].indexOf(c.fase) < 0)
 };
+function sinceDays(at) { return at ? -C.days(String(at).slice(0, 10)) : null; }
+function resumen(c) {
+  const l = c.notas || [], ln = l[l.length - 1], dl = ln ? sinceDays(ln.at) : null, imp = c.importe ? C.eur0(c.importe) : '';
+  const hace = d => d == null ? '' : d <= 0 ? ' hoy' : d === 1 ? ' ayer' : ' hace ' + d + ' días';
+  let estado;
+  if (c.fase === 'Nuevo') estado = 'Aún sin contactar' + (c.origen && c.origen !== 'Manual' ? ' · llegó por ' + c.origen : '');
+  else if (c.fase === 'Presupuesto enviado') estado = 'Presupuesto ' + (imp ? 'de ' + imp + ' ' : '') + 'enviado' + hace(dl) + (dl > 5 ? ' · sin respuesta' : '');
+  else if (c.fase === 'Negociando') estado = 'Negociando' + (imp ? ' · ' + imp : '') + (ln ? ' · último contacto' + hace(dl) : '');
+  else if (c.fase === 'Contactado') estado = 'Contactado' + (ln && ln.canal && ln.canal !== 'Nota' ? ' por ' + ln.canal.toLowerCase() : '') + hace(dl);
+  else estado = c.fase;
+  const hacer = c.proxAccion || { Nuevo: 'Primer contacto: llamar o WhatsApp', Contactado: 'Volver a contactar', 'Presupuesto enviado': 'Llamar para cerrar fecha', Negociando: 'Cerrar condiciones y fecha' }[c.fase] || '';
+  return { estado: estado, hacer: hacer };
+}
+function prioScore(c) {
+  const n = C.days(c.proxFecha); let sc = 0;
+  if (n != null) sc += n < 0 ? 20 + Math.min(30, -n) : n === 0 ? 18 : n <= 2 ? 8 : 0;
+  if (c.fase === 'Presupuesto enviado' || c.fase === 'Negociando') sc += 10;
+  if (c.prioridad === 'A') sc += 8; else if (c.prioridad === 'C') sc -= 5;
+  return sc;
+}
+function prospectCard(c) {
+  const r = resumen(c);
+  return '<div class="card pcard"><a class="row between" href="#/contacto/' + esc(c.id) + '" style="text-decoration:none;color:inherit;align-items:flex-start;gap:8px"><div class="grow" style="min-width:0"><b class="ellipsis" style="display:block;font-size:15px">' + esc(c.nombre) + '</b><div class="small muted">' + esc(r.estado) + '</div></div>' + whenChip(c.proxFecha) + '</a>' +
+    '<div class="todo">' + icon('chev', 's') + '<span>' + esc(r.hacer.length > 110 ? r.hacer.slice(0, 104).replace(/\s+\S*$/, '') + '…' : r.hacer) + '</span></div>' +
+    '<div class="row" style="gap:6px;margin-top:8px">' + (c.telefono ? '<a class="btn sm ghost" href="tel:' + esc(String(c.telefono).replace(/[^\d+]/g, '')) + '">' + icon('phone', 's') + 'Llamar</a><a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/' + esc(String(c.telefono).replace(/[^\d]/g, '').replace(/^(?!34)(\d{9})$/, '34$1')) + '">' + icon('whatsapp', 's') + 'WhatsApp</a>' : '') + '<button class="btn sm green" data-reg="' + esc(c.id) + '" style="margin-left:auto">' + icon('check', 's') + 'Hecho</button></div></div>';
+}
 function whenChip(day) {
   if (!day) return '<span class="chip">Sin fecha</span>';
   const n = C.days(day);
@@ -2109,6 +2199,7 @@ function whenChip(day) {
   return '<span class="chip info">' + esc(C.dShort(day)) + '</span>';
 }
 function faseChip(f) { return '<span class="chip ' + ({ Nuevo: 'info', Contactado: '', 'Presupuesto enviado': 'warn', Negociando: 'warn', Ganado: 'ok', Perdido: 'bad', Archivado: '' }[f] || '') + '">' + esc(f) + '</span>'; }
+function ritmoTxt(r) { r = Number(r) || 0; if (!r) return '—'; if (r <= 2) return 'varias veces por semana'; if (r <= 4) return 'un par de veces por semana'; if (r <= 9) return 'cada semana'; if (r <= 18) return 'cada 2 semanas'; if (r <= 40) return 'cada mes'; return 'cada ' + Math.round(r / 30) + ' meses'; }
 function ritmoChip(c) { return '<span class="chip ' + ({ 'Se enfría': 'bad', Preguntar: 'warn', Normal: 'ok' }[c.estado] || '') + '">' + esc(c.estado || '—') + '</span>'; }
 function factChip(f) { return '<span class="chip ' + ({ Cobrada: 'ok', Parcial: 'warn', Pendiente: 'warn', Anulada: 'bad' }[f.estado] || '') + '">' + esc(f.estado) + '</span>'; }
 function crmWait(title) { loadCrm(); return { title: title, back: false, html: '<div class="card empty">' + icon('refresh') + '<p>Cargando…</p></div>' }; }
@@ -2117,10 +2208,14 @@ function telLinks(tel, email) {
   const t = String(tel || '').replace(/[^\d+]/g, ''), w = t.replace(/^\+/, '').replace(/^(?!34)(\d{9})$/, '34$1');
   return '<div class="row" style="gap:6px;flex-wrap:wrap">' + (t ? '<a class="btn sm ghost" href="tel:' + esc(t) + '">' + icon('phone', 's') + 'Llamar</a><a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/' + esc(w) + '">' + icon('whatsapp', 's') + 'WhatsApp</a>' : '') + (email ? '<a class="btn sm ghost" href="mailto:' + esc(String(email).split(/[\s,;]+/)[0]) + '">' + icon('mail', 's') + 'Correo</a>' : '') + '</div>';
 }
+function noteHtml(n) {
+  const t = String(n.texto || ''), short = t.length > 180 ? t.slice(0, 170).replace(/\s+\S*$/, '') + '…' : t;
+  return '<div class="tl-i"><div class="small muted">' + esc(n.canal || 'Nota') + ' · ' + esc(fDate(n.at, true)) + ' · ' + esc(n.by || '') + '</div>' + (short === t ? '<p style="white-space:pre-wrap">' + esc(t) + '</p>' : '<details class="nmore"><summary><span style="white-space:pre-wrap">' + esc(short) + '</span> <b class="link small">ver más</b></summary><p style="white-space:pre-wrap">' + esc(t) + '</p></details>') + '</div>';
+}
 function timeline(notas) {
   const l = (notas || []).slice().reverse();
   if (!l.length) return '<p class="small muted">Sin notas todavía.</p>';
-  return '<div class="tl">' + l.slice(0, 30).map(n => '<div class="tl-i"><div class="small muted">' + esc(n.canal || 'Nota') + ' · ' + esc(fDate(n.at, true)) + ' · ' + esc(n.by || '') + '</div><p style="white-space:pre-wrap">' + esc(n.texto) + '</p></div>').join('') + '</div>' + (l.length > 30 ? '<p class="tiny muted">' + (l.length - 30) + ' notas anteriores</p>' : '');
+  return '<div class="tl">' + l.slice(0, 2).map(noteHtml).join('') + '</div>' + (l.length > 2 ? '<details class="tl-more"><summary class="link small">Ver historial completo (' + l.length + ')</summary><div class="tl" style="margin-top:6px">' + l.slice(2, 60).map(noteHtml).join('') + '</div></details>' : '');
 }
 function noteSheet(title, cb, withNext, next) {
   const canales = (S.crm && S.crm.canales) || ['Llamada', 'WhatsApp', 'Correo', 'Visita', 'Reunión', 'Nota'];
@@ -2170,7 +2265,7 @@ VIEWS.panel = function () {
     '<div class="card"><div class="row between"><h2>' + icon('target', 's') + ' Seguimientos</h2><a class="link small" href="#/comercial">Ver todo</a></div><div class="list">' +
     (seg.length + segCl.length ? segCl.map(c => rowLink('ficha/' + c.id, esc(c.nombre), 'Cliente · ' + esc(c.crm.proxAccion || 'Seguimiento'), whenChip(c.crm.proxFecha))).join('') + seg.slice(0, 8).map(c => rowLink('contacto/' + c.id, esc(c.nombre), esc(c.proxAccion || c.fase), whenChip(c.proxFecha))).join('') + (seg.length > 8 ? '<p class="tiny muted" style="padding-top:6px">y ' + (seg.length - 8) + ' más</p>' : '') : '<p class="small muted" style="padding:8px 0">Nada pendiente para hoy.</p>') + '</div></div>' +
     '<div class="card"><div class="row between"><h2>' + icon('users', 's') + ' Clientes a vigilar</h2><a class="link small" href="#/clientes">Clientes</a></div><div class="list">' +
-    (vigilar.length ? vigilar.slice(0, 6).map(c => rowLink('ficha/' + c.id, esc(c.nombre), 'Suele: cada ' + c.ritmo + ' días · último: hace ' + c.dias + ' días', ritmoChip(c))).join('') : '<p class="small muted" style="padding:8px 0">Todos los clientes van a su ritmo.</p>') + '</div></div>' +
+    (vigilar.length ? vigilar.slice(0, 6).map(c => rowLink('ficha/' + c.id, esc(c.nombre), 'Suele: ' + ritmoTxt(c.ritmo) + ' · último: hace ' + c.dias + ' días', ritmoChip(c))).join('') : '<p class="small muted" style="padding:8px 0">Todos los clientes van a su ritmo.</p>') + '</div></div>' +
     '<div class="card"><div class="row between"><h2>' + icon('file', 's') + ' Presupuestos abiertos</h2><span class="small muted">' + quotes.length + '</span></div><div class="list">' +
     (quotes.length ? quotes.slice(0, 6).map(p => rowLink(p.cliente ? 'ficha/' + p.cliente : 'contacto/' + p.contacto, esc(p.datos && p.datos.nombre), esc(p.numero) + ' · ' + C.d(p.fecha), '<b class="small">' + C.eur0(p.total) + '</b>')).join('') : '<p class="small muted" style="padding:8px 0">No hay presupuestos pendientes de respuesta.</p>') + '</div></div>' +
     '<div class="card"><div class="row between"><h2>' + icon('euro', 's') + ' Cobros y anticipos</h2><a class="link small" href="#/facturas">Facturas</a></div><div class="list">' +
@@ -2188,28 +2283,54 @@ VIEWS.comercial = function (r) {
   if (!isAdmin()) return VIEWS.inicio();
   if (!S.crm) return crmWait('Comercial');
   loadCrm();
-  const tab = r.id || S.ui.comTab || 'seguimiento'; S.ui.comTab = tab;
+  const tab = r.id || S.ui.comTab || 'hoy'; S.ui.comTab = tab;
   const q = norm(S.ui.comQ || '');
   const all = S.crm.contactos.filter(c => !c.cliente);
-  const act = C.activos();
-  const rev = act.filter(c => c.revisar);
-  let list;
-  if (tab === 'revisar') list = rev.sort((a, b) => (a.prioridad || 'Z').localeCompare(b.prioridad || 'Z'));
-  else if (tab === 'todos') list = act.slice().sort((a, b) => String(b.actualizado).localeCompare(String(a.actualizado)));
-  else if (tab === 'cerrados') list = all.filter(c => ['Perdido', 'Archivado'].indexOf(c.fase) >= 0);
-  else list = act.filter(c => c.proxFecha && !c.revisar).sort((a, b) => a.proxFecha.localeCompare(b.proxFecha));
-  if (q) list = (tab === 'cerrados' ? list : all).filter(c => norm(c.nombre + c.telefono + c.email + c.ubicacion + c.vehiculo).indexOf(q) >= 0);
+  const act = C.activos(), rev = act.filter(c => c.revisar), work = act.filter(c => !c.revisar);
   const fases = ['Nuevo', 'Contactado', 'Presupuesto enviado', 'Negociando'];
-  const html =
-    '<div class="kpis k4">' + fases.map(f => '<div class="kpi" style="cursor:default"><small>' + esc(f) + '</small><b>' + act.filter(c => c.fase === f).length + '</b></div>').join('') + '</div>' +
-    '<div class="row" style="gap:8px;margin-top:12px"><div class="search grow"><input class="in" id="cq" placeholder="Buscar prospecto" value="' + esc(S.ui.comQ || '') + '"></div><button class="btn green" id="cnew">' + icon('plus') + '<span class="hide-s">Prospecto</span></button></div>' +
-    '<div class="seg" style="margin:10px 0">' + [['seguimiento', 'Seguimiento'], ['revisar', 'Por revisar (' + rev.length + ')'], ['todos', 'Activos'], ['cerrados', 'Cerrados']].map(t => '<button data-ct="' + t[0] + '" class="' + (tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div>' +
-    (tab === 'revisar' && rev.length ? '<p class="small muted" style="margin:0 2px 8px">Abre cada uno, mira si se le escribió o llamó y decide: seguimiento con fecha, o archivar. Así limpiamos la lista esta semana.</p>' : '') +
-    '<div class="card list" style="padding:2px 14px">' + (list.length ? list.slice(0, 150).map(c => rowLink('contacto/' + c.id, esc(c.nombre) + (c.prioridad === 'A' ? ' <span class="chip info" style="margin-left:4px">A</span>' : ''), [c.fase, c.vehiculo, c.ubicacion].filter(Boolean).map(esc).join(' · ') + (c.proxAccion ? ' · ' + esc(c.proxAccion) : ''), tab === 'seguimiento' ? whenChip(c.proxFecha) : faseChip(c.fase))).join('') : '<p class="small muted" style="padding:12px 0">' + (tab === 'seguimiento' ? 'No hay seguimientos con fecha.' : 'Nada por aquí.') + '</p>') + '</div>';
+  const wide = window.innerWidth >= 900;
+  let body = '';
+  if (q) {
+    const l = all.filter(c => norm(c.nombre + c.telefono + c.email + c.ubicacion + c.vehiculo + c.contacto).indexOf(q) >= 0);
+    body = '<div class="card list" style="padding:2px 14px">' + (l.length ? l.slice(0, 60).map(c => rowLink('contacto/' + c.id, esc(c.nombre), esc(resumen(c).estado), faseChip(c.fase))).join('') : '<p class="small muted" style="padding:12px 0">Nada con ese nombre.</p>') + '</div>';
+  } else if (tab === 'hoy') {
+    const top = work.map(c => [c, prioScore(c)]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, 5).map(x => x[0]);
+    const next = work.filter(c => top.indexOf(c) < 0 && c.proxFecha && C.days(c.proxFecha) >= 0 && C.days(c.proxFecha) <= 7).sort((a, b) => a.proxFecha.localeCompare(b.proxFecha));
+    const atras = work.filter(c => top.indexOf(c) < 0 && c.proxFecha && C.days(c.proxFecha) < 0).length;
+    body = '<div class="sec" style="margin-top:4px"><h2>Lo más importante hoy</h2><span class="small muted">' + top.length + '</span></div>' +
+      (top.length ? '<div class="cols">' + top.map(prospectCard).join('') + '</div>' : '<div class="card empty">' + icon('check', 'l') + '<p>Nada urgente. Buen momento para revisar prospectos.</p></div>') +
+      (next.length ? '<div class="sec"><h2>Próximos 7 días</h2></div><div class="card list" style="padding:2px 14px">' + next.map(c => rowLink('contacto/' + c.id, esc(c.nombre), esc(c.proxAccion || resumen(c).hacer), whenChip(c.proxFecha))).join('') + '</div>' : '') +
+      (atras ? '<p class="small muted" style="margin-top:10px">Hay ' + atras + ' seguimientos atrasados más. Están en «Todos».</p>' : '') +
+      (rev.length ? '<button class="banner warn wide" style="margin-top:12px;text-align:left" data-ct="revisar">' + icon('target') + '<span class="grow"><b>' + rev.length + ' por revisar</b> del CRM anterior · unos 20 al día</span>' + icon('chev', 's') + '</button>' : '');
+  } else if (tab === 'revisar') {
+    body = '<p class="small muted" style="margin:0 2px 8px">Abre cada uno y decide: seguimiento con fecha, o archivar. Así limpiamos la lista esta semana.</p><div class="card list" style="padding:2px 14px">' + (rev.length ? rev.sort((a, b) => (a.prioridad || 'Z').localeCompare(b.prioridad || 'Z')).slice(0, 150).map(c => rowLink('contacto/' + c.id, esc(c.nombre) + (c.prioridad === 'A' ? ' <span class="chip info" style="margin-left:4px">A</span>' : ''), esc([c.vehiculo, c.ubicacion].filter(Boolean).join(' · ') || resumen(c).estado), faseChip(c.fase))).join('') : '<p class="small muted" style="padding:12px 0">Todo revisado. ¡Bien!</p>') + '</div>';
+  } else if (tab === 'todos') {
+    if (wide) {
+      body = '<div class="kanban">' + fases.map(f => { const l = work.filter(c => c.fase === f).sort((a, b) => prioScore(b) - prioScore(a)); return '<div class="kcol" data-fase="' + esc(f) + '"><div class="kh">' + esc(f) + ' <span>' + l.length + '</span></div>' + l.map(c => { const r2 = resumen(c); return '<a class="kc" draggable="true" data-kc="' + esc(c.id) + '" href="#/contacto/' + esc(c.id) + '"><b>' + esc(c.nombre) + '</b><small>' + esc(r2.hacer) + '</small>' + (c.proxFecha ? whenChip(c.proxFecha) : '') + '</a>'; }).join('') + '</div>'; }).join('') + '</div><p class="tiny muted" style="margin-top:8px">Arrastra una tarjeta a otra columna para cambiar su fase.</p>';
+    } else {
+      const ff = S.ui.comFase || '';
+      const l = work.filter(c => !ff || c.fase === ff).sort((a, b) => prioScore(b) - prioScore(a));
+      body = '<div class="chips scrollx" style="margin-bottom:8px"><button data-cf="" class="' + (!ff ? 'on' : '') + '">Todas · ' + work.length + '</button>' + fases.map(f => '<button data-cf="' + esc(f) + '" class="' + (ff === f ? 'on' : '') + '">' + esc(f) + ' · ' + work.filter(c => c.fase === f).length + '</button>').join('') + '</div>' +
+        '<div class="card list" style="padding:2px 14px">' + l.map(c => rowLink('contacto/' + c.id, esc(c.nombre), esc(resumen(c).hacer), c.proxFecha ? whenChip(c.proxFecha) : faseChip(c.fase))).join('') + '</div>';
+    }
+  } else {
+    const l = all.filter(c => ['Perdido', 'Archivado'].indexOf(c.fase) >= 0);
+    body = '<div class="card list" style="padding:2px 14px">' + (l.length ? l.map(c => rowLink('contacto/' + c.id, esc(c.nombre), esc(c.fase), '')).join('') : '<p class="small muted" style="padding:12px 0">Nada archivado.</p>') + '</div>';
+  }
+  const html = '<div class="row" style="gap:8px"><div class="search grow"><input class="in" id="cq" placeholder="Buscar prospecto" value="' + esc(S.ui.comQ || '') + '"></div><button class="btn green" id="cnew">' + icon('plus') + '<span class="hide-s">Prospecto</span></button></div>' +
+    '<div class="seg" style="margin:10px 0">' + [['hoy', 'Hoy'], ['todos', 'Todos ' + work.length], ['revisar', 'Revisar ' + rev.length], ['cerrados', 'Cerrados']].map(t => '<button data-ct="' + t[0] + '" class="' + (tab === t[0] && !q ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div>' + body;
   return { title: 'Comercial', html: html, mount: el => {
-    $$('[data-ct]', el).forEach(b => b.onclick = () => { S.ui.comTab = b.dataset.ct; go('comercial/' + b.dataset.ct); });
+    $$('[data-ct]', el).forEach(b => b.onclick = () => { S.ui.comTab = b.dataset.ct; S.ui.comQ = ''; go('comercial/' + b.dataset.ct); });
+    $$('[data-cf]', el).forEach(b => b.onclick = () => { S.ui.comFase = b.dataset.cf; render(); });
+    $$('[data-reg]', el).forEach(b => b.onclick = () => { const c = C.contact(b.dataset.reg); noteSheet('Hecho · ' + c.nombre, body => api('contactNote', Object.assign({ id: c.id }, body)), true, { proxAccion: '', proxFecha: '' }); });
     const qi = $('#cq', el); qi.oninput = () => { S.ui.comQ = qi.value; clearTimeout(qi._t); qi._t = setTimeout(() => { render(); const n = $('#cq'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
     $('#cnew', el).onclick = () => contactSheet(null);
+    $$('[data-kc]', el).forEach(k => k.ondragstart = e => { e.dataTransfer.setData('text/plain', k.dataset.kc); k.classList.add('drag'); });
+    $$('.kcol', el).forEach(col => {
+      col.ondragover = e => { e.preventDefault(); col.classList.add('over'); };
+      col.ondragleave = () => col.classList.remove('over');
+      col.ondrop = e => { e.preventDefault(); col.classList.remove('over'); const id = e.dataTransfer.getData('text/plain'), c = C.contact(id); if (!c || c.fase === col.dataset.fase) return; c.fase = col.dataset.fase; render(); command(async () => { await api('contactSave', { id: id, fase: col.dataset.fase }); await loadCrm(true); }, 'Movido a ' + col.dataset.fase); };
+    });
   } };
 };
 function contactSheet(c) {
@@ -2242,7 +2363,7 @@ VIEWS.contacto = function (r) {
     '<div class="card"><div class="row between" style="align-items:flex-start"><div class="grow"><h1 style="font-size:18px">' + esc(c.nombre) + '</h1><p class="small muted">' + [c.tipo, c.contacto, c.vehiculo, c.ubicacion, c.origen && 'Origen: ' + c.origen].filter(Boolean).map(esc).join(' · ') + '</p></div><button class="iconbtn" id="ced" aria-label="Editar">' + icon('edit') + '</button></div>' +
     '<div style="margin-top:10px">' + telLinks(c.telefono, c.email) + '</div>' +
     '<label class="f">Fase</label><div class="chips" id="cf">' + S.crm.fases.filter(f => f !== 'Ganado').map(f => '<button type="button" data-f="' + esc(f) + '" class="' + (c.fase === f ? 'on' : '') + '">' + esc(f) + '</button>').join('') + '</div></div>' +
-    '<div class="card"><div class="row between"><h2>Próxima acción</h2>' + whenChip(c.proxFecha) + '</div><p style="margin-top:6px">' + esc(c.proxAccion || 'Sin definir') + '</p>' +
+    '<div class="card resumen"><div class="row between"><h2>Resumen</h2>' + whenChip(c.proxFecha) + '</div><p class="small muted" style="margin-top:4px">' + esc(resumen(c).estado) + '</p><div class="todo" style="margin-top:8px">' + icon('chev', 's') + '<span><b>Qué hacer:</b> ' + esc(resumen(c).hacer) + '</span></div>' +
     '<div class="row" style="gap:8px;margin-top:10px"><button class="btn sm green grow" id="cnote">' + icon('plus', 's') + 'Registrar contacto</button>' + (c.revisar ? '<button class="btn sm ghost" id="crev">' + icon('check', 's') + 'Revisado</button>' : '') + '</div></div>' +
     '<div class="card"><div class="row between"><h2>Presupuestos</h2><button class="btn sm ghost" id="cq">' + icon('plus', 's') + 'Nuevo</button></div><div class="list">' + (quotes.length ? quotes.map(quoteRow).join('') : '<p class="small muted" style="padding:6px 0">Aún no hay presupuestos.</p>') + '</div></div>' +
     '<div class="card"><h2>Historial</h2><div style="margin-top:8px">' + timeline(c.notas) + '</div></div>' +
@@ -2311,7 +2432,7 @@ VIEWS.clientes = function () {
     .map(c => Object.assign({}, c, { fac: fs.filter(f => f.cliente === c.id && String(f.fecha).slice(0, 4) === ano).reduce((n, f) => n + C.num(f.imponible), 0), pend: fs.filter(f => f.cliente === c.id).reduce((n, f) => n + C.pendiente(f), 0) }))
     .sort((a, b) => b.fac - a.fac || a.nombre.localeCompare(b.nombre, 'es'));
   const html = '<div class="row" style="gap:8px"><div class="search grow"><input class="in" id="clq" placeholder="Buscar cliente" value="' + esc(S.ui.clQ || '') + '"></div><button class="btn green" id="clnew">' + icon('plus') + '<span class="hide-s">Cliente</span></button></div>' +
-    '<div class="card list" style="padding:2px 14px;margin-top:10px">' + cs.map(c => rowLink('ficha/' + c.id, esc(c.nombre), (c.ultimo ? 'Último servicio ' + C.dShort(c.ultimo) + ' · cada ' + c.ritmo + ' d' : 'Sin servicios en la app') + ' · ' + C.eur0(c.fac) + ' en ' + ano + (c.pend > 0.01 ? ' · <span style="color:var(--warn)">pendiente ' + C.eur0(c.pend) + '</span>' : ''), ritmoChip(c))).join('') + '</div>' +
+    '<div class="card list" style="padding:2px 14px;margin-top:10px">' + cs.map(c => rowLink('ficha/' + c.id, esc(c.nombre), (c.ultimo ? 'Último servicio ' + C.dShort(c.ultimo) + ' · ' + ritmoTxt(c.ritmo) : 'Sin servicios en la app') + ' · ' + C.eur0(c.fac) + ' en ' + ano + (c.pend > 0.01 ? ' · <span style="color:var(--warn)">pendiente ' + C.eur0(c.pend) + '</span>' : ''), ritmoChip(c))).join('') + '</div>' +
     '<p class="tiny muted" style="margin-top:8px">Un cliente es quien ya ha hecho algún servicio. Los que aún no, están en Comercial. El ritmo se calcula solo con sus servicios, y puedes fijarlo a mano en su ficha.</p>';
   return { title: 'Clientes', html: html, mount: el => {
     const qi = $('#clq', el); qi.oninput = () => { S.ui.clQ = qi.value; clearTimeout(qi._t); qi._t = setTimeout(() => { render(); const n = $('#clq'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
@@ -2332,7 +2453,7 @@ VIEWS.ficha = function (r) {
   const html =
     '<div class="card"><div class="row between" style="align-items:flex-start"><div class="grow"><h1 style="font-size:18px">' + esc(c.nombre) + '</h1><p class="small muted">' + [c.tipo === 'empresa' ? 'Empresa' : 'Particular', c.nif && 'NIF ' + c.nif, c.direccion].filter(Boolean).map(esc).join(' · ') + '</p></div>' + ritmoChip(c) + '</div>' +
     '<div style="margin-top:10px">' + telLinks(c.telefono, c.email) + '</div></div>' +
-    '<div class="kpis k4" style="margin-top:10px"><div class="kpi"><small>Facturado ' + ano + '</small><b>' + C.eur0(facAno) + '</b></div><div class="kpi ' + (pend > 0.01 ? 'alert' : '') + '"><small>Pendiente</small><b>' + C.eur0(pend) + '</b></div><div class="kpi"><small>Servicios 90 días</small><b>' + (c.n90 || 0) + '</b></div><div class="kpi"><small>Ritmo</small><b>' + (c.ritmo ? 'cada ' + c.ritmo + ' d' : '—') + '</b><small class="tiny muted">' + (c.dias != null ? 'último hace ' + c.dias + ' d' : 'sin servicios') + '</small></div></div>' +
+    '<div class="kpis k4" style="margin-top:10px"><div class="kpi"><small>Facturado ' + ano + '</small><b>' + C.eur0(facAno) + '</b></div><div class="kpi ' + (pend > 0.01 ? 'alert' : '') + '"><small>Pendiente</small><b>' + C.eur0(pend) + '</b></div><div class="kpi"><small>Servicios 90 días</small><b>' + (c.n90 || 0) + '</b></div><div class="kpi"><small>Ritmo</small><b style="font-size:15px">' + ritmoTxt(c.ritmo) + '</b><small class="tiny muted">' + (c.dias != null ? 'último hace ' + c.dias + ' d' : 'sin servicios') + '</small></div></div>' +
     fs.filter(f => C.porFacturar(f) > 0.01).map(f => '<div class="banner warn" style="margin-top:10px">' + icon('euro') + '<span class="grow">Falta facturar el resto del anticipo ' + esc(f.numero) + ': <b>' + C.eur(C.porFacturar(f)) + '</b></span><button class="btn sm" data-fin="' + esc(f.id) + '">Factura final</button></div>').join('') +
     '<div class="card" style="margin-top:10px"><div class="row between"><h2>Seguimiento</h2>' + (crm.proxFecha ? whenChip(crm.proxFecha) : '') + '</div><p style="margin-top:6px">' + esc(crm.proxAccion || (c.estado === 'Se enfría' ? 'Lleva más tiempo del habitual sin servicios: conviene preguntar qué tal.' : 'Sin acción pendiente')) + '</p>' +
     '<button class="btn sm green" id="fnote" style="margin-top:10px">' + icon('plus', 's') + 'Registrar contacto</button></div>' +
@@ -2547,30 +2668,60 @@ function settingsSheet() {
 }
 
 /* ---------- Agenda (Google Calendar) ---------- */
+function evDay(e) { return e.todoDia ? new Date(e.inicio).toISOString().slice(0, 10) : madridDay(e.inicio); }
+function evKind(e) { return /^Seguimiento/.test(e.titulo) ? 'seg' : /servicio|limpieza|k2|lavado|interior|exterior/i.test(e.titulo) ? 'srv' : 'otro'; }
+function monday(d) { const x = new Date(d + 'T12:00:00Z'), w = (x.getUTCDay() + 6) % 7; return shiftDay(d, -w); }
 VIEWS.agenda = function () {
   if (!isAdmin()) return VIEWS.inicio();
-  const from = S.ui.agFrom || madridDay(), to = shiftDay(from, 13);
-  const html = '<div class="row" style="gap:8px"><button class="btn ghost sm" id="agp" aria-label="Anterior">' + icon('back', 's') + '</button><b class="grow" style="text-align:center">' + C.dShort(from) + ' – ' + C.dShort(to) + '</b><button class="btn ghost sm" id="agn" aria-label="Siguiente">' + icon('chev', 's') + '</button><button class="btn green" id="agnew">' + icon('plus') + '<span class="hide-s">Evento</span></button></div>' +
-    '<div id="agl" style="margin-top:10px"><div class="card empty">Cargando tu calendario…</div></div><p class="tiny muted" style="margin-top:8px">Es tu Google Calendar: lo que apuntes aquí lo ves también en el móvil, y los seguimientos de clientes y prospectos aparecen solos.</p>';
+  const view = S.ui.agView || (window.innerWidth >= 900 ? 'semana' : 'semana'), base = S.ui.agDay || madridDay(), hoy = madridDay();
+  let from, to, title;
+  if (view === 'mes') { const m1 = base.slice(0, 8) + '01'; from = monday(m1); to = shiftDay(from, 41); title = new Date(m1 + 'T12:00:00Z').toLocaleDateString('es-ES', { month: 'long', year: 'numeric', timeZone: 'UTC' }); }
+  else if (view === 'semana') { from = monday(base); to = shiftDay(from, 6); title = C.dShort(from) + ' – ' + C.dShort(to); }
+  else { from = to = base; title = new Date(base + 'T12:00:00Z').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }); }
+  const step = view === 'mes' ? 'mes' : view === 'semana' ? 7 : 1;
+  const html = '<div class="row" style="gap:8px;flex-wrap:wrap"><div class="seg">' + [['mes', 'Mes'], ['semana', 'Semana'], ['dia', 'Día']].map(v => '<button data-av="' + v[0] + '" class="' + (view === v[0] ? 'on' : '') + '">' + v[1] + '</button>').join('') + '</div>' +
+    '<div class="row grow" style="gap:6px;justify-content:flex-end"><button class="btn ghost sm" id="agp" aria-label="Anterior">' + icon('back', 's') + '</button><button class="btn ghost sm" id="agh">Hoy</button><button class="btn ghost sm" id="agn" aria-label="Siguiente">' + icon('chev', 's') + '</button><button class="btn green sm" id="agnew">' + icon('plus', 's') + '<span class="hide-s">Evento</span></button></div></div>' +
+    '<h2 style="margin:12px 2px 8px">' + esc(title.charAt(0).toUpperCase() + title.slice(1)) + '</h2>' +
+    '<div id="agl"><div class="card empty">Cargando tu calendario…</div></div>' +
+    '<div class="row small muted" style="gap:14px;margin-top:8px;flex-wrap:wrap"><span><i class="dot srv"></i>Servicios</span><span><i class="dot seg"></i>Seguimientos</span><span><i class="dot otro"></i>Otros</span></div>';
   return { title: 'Agenda', html: html, mount: async el => {
-    $('#agp', el).onclick = () => { S.ui.agFrom = shiftDay(from, -14); render(); };
-    $('#agn', el).onclick = () => { S.ui.agFrom = shiftDay(from, 14); render(); };
-    $('#agnew', el).onclick = () => eventSheet(null);
-    try {
-      const r = await api('agendaList', { from: from, to: to });
-      if (!r.ok) { $('#agl').innerHTML = empty('calendar', 'Calendar sin conectar', 'Ejecuta activarCrm() en el editor de Apps Script para autorizarlo.'); return; }
-      const by = {};
-      r.eventos.forEach(e => { const d = e.todoDia ? new Date(e.inicio).toISOString().slice(0, 10) : madridDay(e.inicio); (by[d] = by[d] || []).push(e); });
+    const move = n => { if (step === 'mes') { const d = new Date(base.slice(0, 8) + '15T12:00:00Z'); d.setUTCMonth(d.getUTCMonth() + n); S.ui.agDay = d.toISOString().slice(0, 10); } else S.ui.agDay = shiftDay(base, n * step); render(); };
+    $('#agp', el).onclick = () => move(-1); $('#agn', el).onclick = () => move(1);
+    $('#agh', el).onclick = () => { S.ui.agDay = hoy; render(); };
+    $$('[data-av]', el).forEach(b => b.onclick = () => { S.ui.agView = b.dataset.av; render(); });
+    $('#agnew', el).onclick = () => eventSheet(null, view === 'dia' ? base : null);
+    let r;
+    try { r = await api('agendaList', { from: from, to: to }); } catch (e) { const b = $('#agl'); if (b) b.innerHTML = empty('alert', 'No disponible', e.message); return; }
+    const box = $('#agl'); if (!box) return;
+    if (!r.ok) { box.innerHTML = empty('calendar', 'Calendar sin conectar', 'Ejecuta activarCrm() en el editor de Apps Script para autorizarlo.'); return; }
+    const by = {};
+    r.eventos.forEach(e => (by[evDay(e)] = by[evDay(e)] || []).push(e));
+    Object.keys(by).forEach(d => by[d].sort((a, b) => (a.todoDia ? 0 : 1) - (b.todoDia ? 0 : 1) || a.inicio.localeCompare(b.inicio)));
+    const evRow = e => '<div class="ag-e ' + evKind(e) + '" data-e="' + esc(e.id) + '"><span class="ag-t">' + (e.todoDia ? 'Todo el día' : fTime(e.inicio) + '–' + fTime(e.fin)) + '</span><b class="grow ellipsis">' + esc(e.titulo) + '</b></div>';
+    if (view === 'mes') {
+      const m = base.slice(0, 7);
+      let g = '<div class="cal-m">' + ['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(d => '<div class="cal-h">' + d + '</div>').join('');
+      for (let d = from; d <= to; d = shiftDay(d, 1)) {
+        const l = by[d] || [];
+        g += '<button class="cal-d ' + (d.slice(0, 7) !== m ? 'out ' : '') + (d === hoy ? 'today' : '') + '" data-day="' + d + '"><span class="n">' + Number(d.slice(8)) + '</span>' + l.slice(0, 3).map(e => '<span class="pill ' + evKind(e) + '">' + esc(e.titulo.replace(/^Seguimiento · /, '')) + '</span>').join('') + (l.length > 3 ? '<span class="more">+' + (l.length - 3) + '</span>' : '') + '</button>';
+      }
+      box.innerHTML = g + '</div>';
+      $$('[data-day]', box).forEach(b => b.onclick = () => { S.ui.agDay = b.dataset.day; S.ui.agView = 'dia'; render(); });
+    } else if (view === 'semana') {
       const days = []; for (let d = from; d <= to; d = shiftDay(d, 1)) days.push(d);
-      const box = $('#agl'); if (!box) return;
-      box.innerHTML = days.filter(d => by[d] || d === madridDay()).map(d => '<div class="ag-d"><div class="ag-h ' + (d === madridDay() ? 'today' : '') + '">' + new Date(d + 'T12:00:00Z').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }) + '</div>' +
-        (by[d] || []).sort((a, b) => (a.todoDia ? 0 : 1) - (b.todoDia ? 0 : 1) || a.inicio.localeCompare(b.inicio)).map(e => '<div class="ag-e ' + (/^Seguimiento/.test(e.titulo) ? 'seg' : '') + '" data-e="' + esc(e.id) + '"><span class="ag-t">' + (e.todoDia ? 'Todo el día' : fTime(e.inicio) + '–' + fTime(e.fin)) + '</span><b class="grow ellipsis">' + esc(e.titulo) + '</b></div>').join('') + (by[d] ? '' : '<p class="small muted" style="padding:6px 2px">Sin eventos.</p>') + '</div>').join('') || empty('calendar', 'Dos semanas libres', 'No hay nada en tu calendario.');
-      $$('[data-e]', box).forEach(x => x.onclick = () => eventSheet(r.eventos.find(e => e.id === x.dataset.e)));
-    } catch (e) { const b = $('#agl'); if (b) b.innerHTML = empty('alert', 'No disponible', e.message); }
+      box.innerHTML = '<div class="cal-w">' + days.map(d => '<div class="ag-d"><button class="ag-h ' + (d === hoy ? 'today' : '') + '" data-day="' + d + '">' + new Date(d + 'T12:00:00Z').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', timeZone: 'UTC' }) + '</button>' + ((by[d] || []).map(evRow).join('') || '<p class="tiny muted" style="padding:4px 2px">—</p>') + '</div>').join('') + '</div>';
+      $$('[data-day]', box).forEach(b => b.onclick = () => { S.ui.agDay = b.dataset.day; S.ui.agView = 'dia'; render(); });
+    } else {
+      const l = by[base] || [], allDay = l.filter(e => e.todoDia), timed = l.filter(e => !e.todoDia);
+      box.innerHTML = (allDay.length ? '<div class="card" style="padding:8px 12px">' + allDay.map(evRow).join('') + '</div>' : '') +
+        '<div class="cal-dia">' + Array.from({ length: 14 }, (_, k) => k + 7).map(h => { const hh = pad(h); const evs = timed.filter(e => fTime(e.inicio).slice(0, 2) === hh); return '<div class="hr"><span>' + hh + ':00</span><div class="grow">' + evs.map(evRow).join('') + '</div></div>'; }).join('') + '</div>' +
+        (timed.some(e => Number(fTime(e.inicio).slice(0, 2)) < 7 || Number(fTime(e.inicio).slice(0, 2)) > 20) ? '<div class="card" style="padding:8px 12px">' + timed.filter(e => Number(fTime(e.inicio).slice(0, 2)) < 7 || Number(fTime(e.inicio).slice(0, 2)) > 20).map(evRow).join('') + '</div>' : '');
+    }
+    $$('[data-e]', box).forEach(x => x.onclick = () => eventSheet(r.eventos.find(e => e.id === x.dataset.e)));
   } };
 };
-function eventSheet(ev) {
-  const d = ev ? (ev.todoDia ? new Date(ev.inicio).toISOString().slice(0, 10) : madridDay(ev.inicio)) : madridDay();
+function eventSheet(ev, dia) {
+  const d = ev ? evDay(ev) : (dia || madridDay());
   sheet(ev ? 'Evento' : 'Nuevo evento', '<label class="f" style="margin-top:0">Título</label><input class="in" id="et" value="' + esc(ev ? ev.titulo : '') + '" placeholder="Servicio K2 · 4 autocaravanas">' +
     '<div class="two"><div><label class="f">Fecha</label><input type="date" class="in" id="ed" value="' + d + '"></div><div class="two"><div><label class="f">Inicio</label><input type="time" class="in" id="ei" value="' + (ev && !ev.todoDia ? fTime(ev.inicio) : '') + '"></div><div><label class="f">Fin</label><input type="time" class="in" id="ef" value="' + (ev && !ev.todoDia ? fTime(ev.fin) : '') + '"></div></div></div>' +
     '<label class="f">Lugar</label><input class="in" id="el" value="' + esc(ev ? ev.lugar : '') + '"><label class="f">Notas</label><textarea class="in" id="en">' + esc(ev ? ev.notas : '') + '</textarea>' +
