@@ -311,3 +311,6 @@ table.t tr.click{cursor:pointer}table.t tr.click:hover td{background:#f8fafb}
 @keyframes rvbump{to{translate:0 -1px}}
 .rv-prog{transition:all 1.6s cubic-bezier(.45,.05,.25,1)}
 @media(prefers-reduced-motion:reduce){.rv-veh,.rv-prog{transition:none}.rv-veh.go,.rv-veh.go .wh{animation:none}}
+.rep-card .rep-ph{display:flex;align-items:center;gap:12px}
+.rep-card .ithumb.big{width:96px;height:96px}
+.rep-card .rep-ph .btn{flex:1;height:52px}

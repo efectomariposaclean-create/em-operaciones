@@ -3,7 +3,7 @@
 'use strict';
 
 const CFG = window.EM_CONFIG || {};
-const VERSION = '3.1.0';
+const VERSION = '3.2.0';
 const ROOT = document.getElementById('root');
 
 /* ============================ Utilidades ============================ */
@@ -457,10 +457,10 @@ function shell() {
   const inc = isClient() ? D.incidents().filter(i => !i.resuelta).length : openIncidents().length;
   const tabs = isClient() ? TABS_CLIENT : isAdmin() ? TABS_ADMIN : [['inicio', 'home', 'Inicio'], ['servicios', 'rv', 'Servicios'], ['incidencias', 'alert', 'Incidencias'], ['jornada', 'clock', 'Jornada'], ['mas', 'grid', 'Más']];
   const active = name => {
-    const map = isClient() ? { servicio: 'inicio', historico: 'buscar' } : { servicio: 'servicios', nuevo: 'servicios', historico: 'buscar', contacto: 'comercial', ficha: 'clientes' };
+    const map = isClient() ? { servicio: 'inicio', historico: 'buscar' } : { servicio: 'servicios', nuevo: 'servicios', historico: 'buscar', contacto: 'comercial', ficha: 'clientes', repaso: 'almacen' };
     return (map[r.name] || r.name) === name;
   };
-  const activeTab = name => active(name) || (name === 'mas' && ['almacen', 'horario', 'buscar', 'albaranes', 'equipo', 'clientes', 'ajustes', 'sistema', 'historico', 'panel', 'comercial', 'contacto', 'ficha', 'facturas', 'contabilidad', 'agenda'].indexOf(r.name) >= 0);
+  const activeTab = name => active(name) || (name === 'mas' && ['almacen', 'horario', 'buscar', 'albaranes', 'equipo', 'clientes', 'ajustes', 'sistema', 'historico', 'panel', 'comercial', 'contacto', 'ficha', 'facturas', 'contabilidad', 'agenda', 'repaso'].indexOf(r.name) >= 0);
   return '<div class="app">' +
     '<aside class="side"><div class="brand"><img src="icons/logo-header.png" alt=""><div><b>Efecto Mariposa</b><small>Operaciones</small></div></div>' +
     side.map(x => Array.isArray(x) ? '<a href="#/' + x[0] + '" class="' + (active(x[0]) ? 'on' : '') + '">' + icon(x[1]) + x[2] + ((x[0] === 'incidencias' || x[0] === 'avisos') && inc ? '<span class="badge">' + inc + '</span>' : '') + '</a>' : '<div class="grp">' + x + '</div>').join('') +
@@ -486,7 +486,7 @@ function render(fromSync) {
   const ae = document.activeElement;
   if (fromSync && ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName) && ae.closest('main') && lastRendered === location.hash) { updateStatus(); return; }
   if (fromSync && $('.scrim')) { updateStatus(); return; }
-  if (fromSync && ['nuevo', 'ajustes', 'cuenta', 'horario', 'albaranes', 'almacen', 'buscar', 'equipo', 'clientes', 'sistema', 'jornada', 'panel', 'comercial', 'contacto', 'ficha', 'facturas', 'contabilidad', 'agenda'].indexOf(r.name) >= 0 && lastRendered === location.hash) { updateStatus(); return; }
+  if (fromSync && ['nuevo', 'ajustes', 'cuenta', 'horario', 'albaranes', 'almacen', 'buscar', 'equipo', 'clientes', 'sistema', 'jornada', 'panel', 'comercial', 'contacto', 'ficha', 'facturas', 'contabilidad', 'agenda', 'repaso'].indexOf(r.name) >= 0 && lastRendered === location.hash) { updateStatus(); return; }
   const y = lastRendered === location.hash ? window.scrollY : 0;
   ROOT.innerHTML = shell();
   const view = isClient() ? (CVIEWS[r.name] || CVIEWS.inicio) : (VIEWS[r.name] || VIEWS.inicio);
@@ -1496,7 +1496,7 @@ async function loadInv(force) {
     S.inv = await api('invSync', {});
     LS.set('inv', S.inv);
     const ae = document.activeElement;
-    if (route().name === 'almacen' && !$('.scrim') && !(ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName))) render();
+    if ((route().name === 'almacen' || route().name === 'repaso') && !$('.scrim') && !(ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName))) render();
     else if (route().name === 'inicio' && !$('.scrim')) render(true);
   } catch (e) { if (!e.auth && force) toast(e.net ? 'Sin conexión: se muestran los últimos datos.' : e.message, true); }
   finally { invLoading = false; }
@@ -1549,7 +1549,7 @@ VIEWS.almacen = function () {
   const falta = arts.filter(a => a.bajo).length, compra = arts.filter(a => a.compraEstado).length;
   const tabs = [['stock', 'Stock'], ['compras', 'Compras' + (compra ? ' (' + compra + ')' : '')], ['cargas', 'Llevar']].concat(isAdmin() ? [['gastos', 'Gastos']] : []);
   let body = '';
-  if (tab === 'stock') body = invStockHtml();
+  if (tab === 'stock') body = invRepasoBanner() + invStockHtml();
   if (tab === 'compras') body = invComprasHtml();
   if (tab === 'cargas') body = invCargasHtml();
   if (tab === 'gastos' && isAdmin()) body = invGastosHtml();
@@ -1568,6 +1568,11 @@ function invStockHtml() {
     '<div class="chips" style="margin-top:10px"><button class="' + (!tipo ? 'on' : '') + '" data-tp="">Todo</button>' + order.map(t => '<button class="' + (tipo === t ? 'on' : '') + '" data-tp="' + t + '">' + INV_TIPOS[t][0] + '</button>').join('') + '<button class="' + (only ? 'on' : '') + '" id="ionly">' + icon('alert', 's') + ' Lo que falta</button></div>' +
     (groups.length ? groups.map(g => '<div class="sec"><h2>' + INV_TIPOS[g[0]][0] + ' · ' + g[1].length + '</h2></div><div class="card list" style="padding:2px 14px">' + g[1].map(invRow).join('') + '</div>').join('') : empty('search', 'Nada que mostrar', only ? 'No falta nada. ¡Todo en orden!' : 'Prueba con otra búsqueda.')) +
     '<p class="tiny muted" style="text-align:center;margin-top:12px">Toca un artículo para registrar lo que usas o avisar de que se acaba.</p>';
+}
+function invRepasoBanner() {
+  if (!isAdmin()) return '';
+  const n = S.inv.articulos.length, f = S.inv.articulos.filter(a => a.foto).length;
+  return '<a class="banner" style="margin-bottom:12px;text-decoration:none;color:inherit" href="#/repaso">' + icon('camera') + '<span class="grow"><b>Repaso de almacén</b><br><span class="small muted">' + f + ' de ' + n + ' con foto · revisa sitio por sitio</span></span>' + icon('chev', 's') + '</a>';
 }
 function invComprasHtml() {
   const list = S.inv.articulos.filter(a => a.compraEstado);
@@ -1880,6 +1885,123 @@ async function renderPublic(token) {
     }
   };
   await load(true);
+}
+
+/* ============================ Repaso de almacén (fotos y ubicaciones) ============================ */
+function repState() { return LS.get('repaso', { ok: {}, no: {}, nuevos: [] }); }
+function repSave(st) { LS.set('repaso', st); }
+function repUbi(a) { return String(a.ubicacion || '').trim() || 'Sin ubicación'; }
+function pickCamera() {
+  return new Promise(res => {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*'; inp.setAttribute('capture', 'environment');
+    inp.onchange = () => res(Array.from(inp.files || []));
+    inp.click();
+  });
+}
+async function repPhoto(a) {
+  const files = await pickCamera(); if (!files.length) return null;
+  toast('Subiendo foto…');
+  try {
+    const data = await compress(files[0], 1400, 0.82), thumb = await compress(files[0], 300, 0.7);
+    let r; if (await command(async () => { r = await api('invPhoto', { id: a.id, data: data, thumb: thumb }, 120000); }, 'Foto guardada')) { S.thumbs['inv:' + r.mini] = thumb; IDB.tput('inv:' + r.mini, thumb); invReplace(r); return r; }
+  } catch (e) { toast(e.message, true); }
+  return null;
+}
+VIEWS.repaso = function (r) {
+  if (!isAdmin()) return VIEWS.almacen();
+  if (!S.inv) return { title: 'Repaso de almacén', back: true, html: '<div class="card empty">Cargando el almacén…</div>', mount: () => loadInv(true) };
+  const st = repState(), arts = S.inv.articulos;
+  const ubis = {}; arts.forEach(a => { (ubis[repUbi(a)] = ubis[repUbi(a)] || []).push(a); });
+  const conFoto = arts.filter(a => a.foto).length, revis = arts.filter(a => st.ok[a.id] || st.no[a.id]).length;
+  const sel = r.id ? decodeURIComponent(r.id) : '';
+  if (!sel) {
+    const names = Object.keys(ubis).sort((a, b) => (a === 'Sin ubicación') - (b === 'Sin ubicación') || a.localeCompare(b, 'es'));
+    const noEsta = arts.filter(a => st.no[a.id]);
+    const nuevos = (st.nuevos || []).map(invArt).filter(Boolean);
+    const html = '<div class="card"><div class="row between"><h2>Tu progreso</h2><span class="small muted">' + revis + ' de ' + arts.length + ' revisados</span></div>' +
+      '<div class="progress" style="margin-top:10px"><i style="width:' + Math.round(100 * revis / Math.max(1, arts.length)) + '%"></i></div>' +
+      '<p class="small muted" style="margin-top:8px">' + conFoto + ' con foto · ' + noEsta.length + ' no encontrados · ' + nuevos.length + ' añadidos</p>' +
+      '<p class="small" style="margin-top:8px">Elige un sitio y ve artículo por artículo: foto, nivel y siguiente.</p></div>' +
+      '<div class="card list" style="padding:2px 14px">' + names.map(n => { const l = ubis[n], f = l.filter(a => a.foto).length, d = l.filter(a => st.ok[a.id] || st.no[a.id]).length; return '<a class="li row-l" href="#/repaso/' + encodeURIComponent(n) + '">' + icon(n === 'Sin ubicación' ? 'alert' : 'pin', 's') + '<div class="grow" style="min-width:0"><b class="ellipsis" style="display:block">' + esc(n) + '</b><div class="small muted">' + l.length + ' artículos · ' + f + ' con foto</div></div>' + (d === l.length ? '<span class="chip ok">Hecho</span>' : '<span class="chip">' + d + '/' + l.length + '</span>') + '</a>'; }).join('') + '</div>' +
+      '<button class="btn green wide" style="margin-top:12px" id="rnew">' + icon('plus') + 'Añadir lo que falta</button>' +
+      (noEsta.length ? '<div class="sec"><h2>No encontrados · ' + noEsta.length + '</h2></div><div class="card list" style="padding:2px 14px">' + noEsta.map(a => '<div class="li irow" data-art="' + esc(a.id) + '">' + invThumb(a) + '<div class="grow" style="min-width:0"><b class="ellipsis" style="display:block;font-size:14px">' + esc(a.nombre) + '</b><div class="small muted">Debería estar en: ' + esc(repUbi(a)) + '</div></div></div>').join('') + '</div><p class="tiny muted" style="margin-top:6px">Tócalo para cambiarle la ubicación o darlo de baja si ya no lo tienes.</p>' : '') +
+      (nuevos.length ? '<div class="sec"><h2>Añadidos en el repaso · ' + nuevos.length + '</h2></div><div class="card list" style="padding:2px 14px">' + nuevos.map(a => '<div class="li irow" data-art="' + esc(a.id) + '">' + invThumb(a) + '<div class="grow" style="min-width:0"><b class="ellipsis" style="display:block;font-size:14px">' + esc(a.nombre) + '</b><div class="small muted">' + esc(repUbi(a)) + '</div></div></div>').join('') + '</div>' : '') +
+      (revis ? '<button class="btn ghost wide" style="margin-top:14px" id="rreset">Empezar un repaso nuevo</button>' : '');
+    return { title: 'Repaso de almacén', back: true, html: html, mount: el => {
+      loadInvThumbs(el);
+      $('#rnew', el).onclick = () => repNew('');
+      $$('[data-art]', el).forEach(x => x.onclick = () => editArt(invArt(x.dataset.art)));
+      const rs = $('#rreset', el); if (rs) rs.onclick = async () => { if (await confirmSheet('Empezar de nuevo', 'Se borran las marcas de revisado. Las fotos y los datos se quedan.', 'Empezar')) { repSave({ ok: {}, no: {}, nuevos: [] }); render(); } };
+    } };
+  }
+  const list = (ubis[sel] || []).slice().sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  const pend = list.filter(a => !st.ok[a.id] && !st.no[a.id]);
+  const cur = invArt(S.ui.repCur) && list.some(a => a.id === S.ui.repCur) ? invArt(S.ui.repCur) : pend[0];
+  const done = list.length - pend.length;
+  const allUbis = Array.from(new Set(arts.map(a => String(a.ubicacion || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es'));
+  let html = '<div class="row between"><b>' + esc(sel) + '</b><span class="small muted">' + done + ' de ' + list.length + '</span></div><div class="progress" style="margin:8px 0 12px"><i style="width:' + Math.round(100 * done / Math.max(1, list.length)) + '%"></i></div>';
+  if (cur) {
+    const lvl = cur.medida === 'nivel';
+    html += '<div class="card rep-card"><div class="rep-ph" data-ph>' + invThumb(cur, true) + '<button class="btn ' + (cur.foto ? 'soft' : 'green') + '" id="rph">' + icon('camera') + (cur.foto ? 'Repetir foto' : 'Hacer foto') + '</button></div>' +
+      '<h2 style="margin-top:12px;font-size:17px">' + esc(cur.nombre) + '</h2><p class="small muted">' + esc([(INV_TIPOS[cur.tipo] || [''])[0], cur.marca, cur.funcion].filter(Boolean).join(' · ')) + '</p>' +
+      '<label class="f">¿Dónde está guardado?</label><input class="in" id="rub" list="rubl" value="' + esc(cur.ubicacion || '') + '" placeholder="Cajón 3, Estante A…"><datalist id="rubl">' + allUbis.map(u => '<option value="' + esc(u) + '">').join('') + '</datalist>' +
+      (cur.tipo === 'maquina' ? '' : lvl ? '<label class="f">¿Cuánto queda?</label>' + levelPicker(cur.nivel) : '<label class="f">¿Cuántos hay? (' + esc(cur.unidad || 'uds') + ')</label><input class="in" id="rq" type="number" min="0" inputmode="numeric" value="' + esc(cur.cantidad) + '">') +
+      '<div class="two" style="margin-top:14px"><button class="btn ghost" id="rno">' + icon('x', 's') + 'No está aquí</button><button class="btn green" id="rok">' + icon('check', 's') + 'Está · Siguiente</button></div></div>';
+  } else {
+    html += '<div class="card empty">' + icon('check', 'l') + '<h2>' + esc(sel) + ' revisado</h2><p class="small muted">Todo comprobado. Si has visto algo que no está en la lista, añádelo ahora.</p></div>';
+  }
+  html += '<button class="btn soft wide" style="margin-top:10px" id="rnew">' + icon('plus', 's') + 'Añadir lo que falta aquí</button>' +
+    '<div class="sec"><h2>En este sitio</h2></div><div class="card list" style="padding:2px 14px">' + list.map(a => '<div class="li irow" data-go="' + esc(a.id) + '" style="' + (cur && a.id === cur.id ? 'background:var(--bg);margin:0 -14px;padding-left:14px;padding-right:14px' : '') + '">' + invThumb(a) + '<div class="grow" style="min-width:0"><b class="ellipsis" style="display:block;font-size:14px">' + esc(a.nombre) + '</b><div class="small muted">' + (a.foto ? 'Con foto' : 'Sin foto') + '</div></div>' + (st.ok[a.id] ? '<span class="chip ok">Está</span>' : st.no[a.id] ? '<span class="chip bad">No está</span>' : '<span class="chip">Pendiente</span>') + '</div>').join('') + '</div>' +
+    '<a class="btn ghost wide" style="margin-top:12px" href="#/repaso">' + icon('back', 's') + 'Elegir otro sitio</a>';
+  return { title: 'Repaso de almacén', back: true, html: html, mount: el => {
+    loadInvThumbs(el);
+    $('#rnew', el).onclick = () => repNew(sel === 'Sin ubicación' ? '' : sel);
+    $$('[data-go]', el).forEach(x => x.onclick = () => { S.ui.repCur = x.dataset.go; render(); window.scrollTo(0, 0); });
+    if (!cur) return;
+    const getLv = cur.medida === 'nivel' && cur.tipo !== 'maquina' ? mountLevel(el, cur.nivel) : null;
+    $('#rph', el).onclick = async () => { const r = await repPhoto(cur); if (r) render(); };
+    const next = () => { S.ui.repCur = ''; render(); window.scrollTo(0, 0); };
+    $('#rno', el).onclick = () => { const s = repState(); s.no[cur.id] = 1; delete s.ok[cur.id]; repSave(s); next(); };
+    $('#rok', el).onclick = async () => {
+      const ub = $('#rub', el).value.trim(), lv = getLv ? getLv() : cur.nivel, q = $('#rq', el) ? $('#rq', el).value : cur.cantidad;
+      const changed = ub !== String(cur.ubicacion || '').trim() || (getLv && lv !== cur.nivel) || (!getLv && cur.tipo !== 'maquina' && String(q) !== String(cur.cantidad));
+      if (changed) {
+        let r; if (!(await command(async () => { r = await api('invSave', Object.assign({}, cur, { ubicacion: ub, nivel: lv, cantidad: q })); }))) return;
+        invReplace(r);
+      }
+      if (!cur.foto) toast('Guardado sin foto. Puedes hacerla luego.');
+      const s = repState(); s.ok[cur.id] = 1; delete s.no[cur.id]; repSave(s);
+      if (changed && ub !== sel && sel !== 'Sin ubicación') toast('Movido a ' + ub);
+      next();
+    };
+  } };
+};
+function repNew(ubi) {
+  let file = null;
+  sheet('Añadir lo que falta', '<button class="btn soft wide" id="nph">' + icon('camera') + 'Hacer foto</button><div id="nprev" style="margin-top:8px"></div>' +
+    '<label class="f">Nombre</label><input class="in" id="nn" placeholder="Limpiador de llantas Koch">' +
+    '<label class="f">Tipo</label><div class="seg" id="ntp">' + Object.keys(INV_TIPOS).map((t, i) => '<button type="button" data-t="' + t + '" class="' + (t === 'producto' ? 'on' : '') + '">' + INV_TIPOS[t][0] + '</button>').join('') + '</div>' +
+    '<div class="two"><div><label class="f">Marca</label><input class="in" id="nm"></div><div><label class="f">Ubicación</label><input class="in" id="nu" value="' + esc(ubi) + '"></div></div>' +
+    '<label class="f">¿Cuánto queda?</label>' + levelPicker('lleno') +
+    '<div class="actions"><button class="btn green" id="nsv">Guardar</button></div>', (el, close) => {
+    let tipo = 'producto';
+    $$('[data-t]', el).forEach(b => b.onclick = () => { tipo = b.dataset.t; $$('[data-t]', el).forEach(x => x.classList.toggle('on', x === b)); });
+    const lv = mountLevel(el, 'lleno');
+    $('#nph', el).onclick = async () => { const f = await pickCamera(); if (!f.length) return; file = f[0]; const t = await compress(file, 300, 0.7); $('#nprev', el).innerHTML = '<img src="' + t + '" style="width:96px;height:96px;object-fit:cover;border-radius:10px">'; };
+    $('#nsv', el).onclick = async () => {
+      const nombre = $('#nn', el).value.trim();
+      if (!nombre) return toast('Indica el nombre.', true);
+      let r; if (!(await command(async () => { r = await api('invSave', { nombre: nombre, tipo: tipo, marca: $('#nm', el).value, ubicacion: $('#nu', el).value, medida: tipo === 'maquina' ? 'cantidad' : 'nivel', nivel: lv(), cantidad: tipo === 'maquina' ? 1 : '', minimo: '', unidad: 'uds' }); }, 'Añadido al almacén'))) return;
+      invReplace(r);
+      const s = repState(); s.ok[r.id] = 1; s.nuevos = (s.nuevos || []).concat([r.id]); repSave(s);
+      close();
+      if (file) {
+        try { const data = await compress(file, 1400, 0.82), thumb = await compress(file, 300, 0.7); const p = await api('invPhoto', { id: r.id, data: data, thumb: thumb }, 120000); S.thumbs['inv:' + p.mini] = thumb; IDB.tput('inv:' + p.mini, thumb); invReplace(p); toast('Foto guardada'); } catch (e) { toast('No se pudo subir la foto: ' + e.message, true); }
+      }
+      render();
+    };
+  });
 }
 
 /* ============================ CRM y administración (dirección) ============================ */
