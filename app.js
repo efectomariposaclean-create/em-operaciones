@@ -3,7 +3,7 @@
 'use strict';
 
 const CFG = window.EM_CONFIG || {};
-const VERSION = '3.2.0';
+const VERSION = '3.2.1';
 const ROOT = document.getElementById('root');
 
 /* ============================ Utilidades ============================ */
@@ -1650,7 +1650,7 @@ function artSheet(a) {
     (a.notas ? '<p class="small muted" style="margin-top:10px">' + esc(a.notas) + '</p>' : '') +
     (a.compraEstado ? '<p class="small" style="margin-top:10px;color:var(--warn)">' + icon('file', 's') + ' En la lista de compra' + (a.compraMotivo ? ': ' + esc(a.compraMotivo) : '') + '</p>' : '') +
     (a.tipo === 'maquina' ? '<button class="btn ghost wide" style="margin-top:14px" data-a="warn">' + icon('alert', 's') + 'Avisar de un problema</button>' : '<div class="two" style="margin-top:14px"><button class="btn green" data-a="use">' + icon('check', 's') + 'He usado</button><button class="btn ghost" data-a="warn">' + icon('alert', 's') + 'Se está acabando</button></div>') +
-    '<button class="btn soft wide" style="margin-top:8px" data-a="photo">' + icon('camera', 's') + (a.foto ? 'Cambiar foto' : 'Añadir foto') + '</button>' +
+    '<div class="row" style="gap:8px;margin-top:8px"><button class="btn soft grow" data-a="photo">' + icon('camera', 's') + (a.foto ? 'Cambiar foto' : 'Añadir foto') + '</button><a class="btn ghost" target="_blank" rel="noopener" href="' + googleImg(a) + '">' + icon('search', 's') + 'Google</a></div>' +
     (adm ? '<div class="sec"><h2>Dirección</h2></div><div class="two"><button class="btn ghost" data-a="in">' + icon('download', 's') + 'Entrada / compra</button><button class="btn ghost" data-a="adj">' + icon('sliders', 's') + 'Ajustar stock</button></div><div class="two" style="margin-top:8px"><button class="btn ghost" data-a="buy">' + icon('file', 's') + (a.compraEstado ? 'Editar compra' : 'Añadir a la compra') + '</button><button class="btn ghost" data-a="edit">' + icon('edit', 's') + 'Editar ficha</button></div>' +
       (a.tipo === 'maquina' ? '<label class="f">Estado de la máquina</label><div class="chips">' + ['Operativa', 'En revisión', 'Averiada', 'Prestada'].map(x => '<button type="button" data-est="' + x + '" class="' + (norm(a.estado) === norm(x) ? 'on' : '') + '">' + x + '</button>').join('') + '</div>' : '') +
       (a.precio ? '<p class="small muted" style="margin-top:10px">Último precio: ' + money(Number(a.precio)) + (a.medida === 'cantidad' ? ' / ' + esc(a.unidad || 'ud') : '') + '</p>' : '') : '') +
@@ -1888,6 +1888,16 @@ async function renderPublic(token) {
 }
 
 /* ============================ Repaso de almacén (fotos y ubicaciones) ============================ */
+function googleImg(a) { return 'https://www.google.com/search?tbm=isch&q=' + encodeURIComponent([a.marca, a.nombre].filter(Boolean).join(' ')); }
+async function galleryPhoto(a) {
+  const files = await pickFiles(); if (!files.length) return null;
+  toast('Subiendo foto…');
+  try {
+    const data = await compress(files[0], 1400, 0.82), thumb = await compress(files[0], 300, 0.7);
+    let r; if (await command(async () => { r = await api('invPhoto', { id: a.id, data: data, thumb: thumb }, 120000); }, 'Foto guardada')) { S.thumbs['inv:' + r.mini] = thumb; IDB.tput('inv:' + r.mini, thumb); invReplace(r); return r; }
+  } catch (e) { toast(e.message, true); }
+  return null;
+}
 function repState() { return LS.get('repaso', { ok: {}, no: {}, nuevos: [] }); }
 function repSave(st) { LS.set('repaso', st); }
 function repUbi(a) { return String(a.ubicacion || '').trim() || 'Sin ubicación'; }
@@ -1944,6 +1954,7 @@ VIEWS.repaso = function (r) {
   if (cur) {
     const lvl = cur.medida === 'nivel';
     html += '<div class="card rep-card"><div class="rep-ph" data-ph>' + invThumb(cur, true) + '<button class="btn ' + (cur.foto ? 'soft' : 'green') + '" id="rph">' + icon('camera') + (cur.foto ? 'Repetir foto' : 'Hacer foto') + '</button></div>' +
+      '<div class="row" style="gap:8px;margin-top:8px"><button class="btn sm ghost grow" id="rgal">' + icon('upload', 's') + 'Desde la galería</button><a class="btn sm ghost grow" target="_blank" rel="noopener" href="' + googleImg(cur) + '">' + icon('search', 's') + 'Buscar en Google</a></div>' +
       '<h2 style="margin-top:12px;font-size:17px">' + esc(cur.nombre) + '</h2><p class="small muted">' + esc([(INV_TIPOS[cur.tipo] || [''])[0], cur.marca, cur.funcion].filter(Boolean).join(' · ')) + '</p>' +
       '<label class="f">¿Dónde está guardado?</label><input class="in" id="rub" list="rubl" value="' + esc(cur.ubicacion || '') + '" placeholder="Cajón 3, Estante A…"><datalist id="rubl">' + allUbis.map(u => '<option value="' + esc(u) + '">').join('') + '</datalist>' +
       (cur.tipo === 'maquina' ? '' : lvl ? '<label class="f">¿Cuánto queda?</label>' + levelPicker(cur.nivel) : '<label class="f">¿Cuántos hay? (' + esc(cur.unidad || 'uds') + ')</label><input class="in" id="rq" type="number" min="0" inputmode="numeric" value="' + esc(cur.cantidad) + '">') +
@@ -1961,6 +1972,7 @@ VIEWS.repaso = function (r) {
     if (!cur) return;
     const getLv = cur.medida === 'nivel' && cur.tipo !== 'maquina' ? mountLevel(el, cur.nivel) : null;
     $('#rph', el).onclick = async () => { const r = await repPhoto(cur); if (r) render(); };
+    $('#rgal', el).onclick = async () => { const r = await galleryPhoto(cur); if (r) render(); };
     const next = () => { S.ui.repCur = ''; render(); window.scrollTo(0, 0); };
     $('#rno', el).onclick = () => { const s = repState(); s.no[cur.id] = 1; delete s.ok[cur.id]; repSave(s); next(); };
     $('#rok', el).onclick = async () => {
