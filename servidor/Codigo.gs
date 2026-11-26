@@ -10,7 +10,7 @@
 
 const APP = {
   nombre: 'Efecto Mariposa · Operaciones',
-  version: '3.4.0',
+  version: '3.5.0',
   appUrl: 'https://efectomariposaclean-create.github.io/em-operaciones/',
   diasEnlace: 15,          // días que el enlace del particular sigue activo tras la entrega
   zona: 'Europe/Madrid',

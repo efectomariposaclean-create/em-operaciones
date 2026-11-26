@@ -5,7 +5,7 @@
  */
 
 const FASES = ['Nuevo', 'Contactado', 'Presupuesto enviado', 'Negociando', 'Ganado', 'Perdido', 'Archivado'];
-const CAT_CONT = ['Combustible', 'Vehículo', 'Seguros', 'Seguridad Social', 'Productos', 'Material', 'Maquinaria', 'Herramientas', 'Software', 'Publicidad', 'Alquiler', 'Personal', 'Gestoría', 'Peajes y parking', 'Otros'];
+const CAT_CONT = ['Combustible', 'Vehículo', 'Seguros', 'Seguridad Social', 'Productos', 'Material', 'Maquinaria', 'Herramientas', 'Software', 'Teléfono e internet', 'Publicidad', 'Alquiler', 'Personal', 'Gestoría', 'Formación', 'Comisiones bancarias', 'Peajes y parking', 'Otros'];
 const TIPO_CONT = ['Gasto', 'Impuesto', 'Excluido'];
 const CANALES = ['Llamada', 'WhatsApp', 'Correo', 'Visita', 'Reunión', 'Nota'];
 
@@ -27,7 +27,10 @@ const CRM_ACTIONS = {
   agendaSave: agendaSave_,
   agendaDelete: agendaDelete_,
   crmSettings: crmSettings_,
-  profileSave: profileSave_
+  profileSave: profileSave_,
+  accRead: accRead_,
+  bankRead: bankRead_,
+  accBatch: accBatch_
 };
 
 /* ------------------------------------------------------------------ */
@@ -96,7 +99,11 @@ function eur_(n) {
 function dayOk_(x) { return /^\d{4}-\d{2}-\d{2}$/.test(String(x || '')) ? String(x) : ''; }
 function jprop_(k, def) { try { return JSON.parse(props_().getProperty(k) || '') || def; } catch (e) { return def; } }
 function emisor_() { return jprop_('EMISOR', { nombre: 'Efecto Mariposa Clean & Care', titular: '', nif: '', direccion: '', telefono: '', email: '', web: '', iban: '', pago: 'Transferencia bancaria', condiciones: '' }); }
-function objetivos_() { return jprop_('OBJETIVOS', { anual: 0, mensual: 0, servicios: 0, clientes: 0 }); }
+function objetivos_() {
+  const o = jprop_('OBJETIVOS', {});
+  if (o && o.anual !== undefined) { const m = {}; m[day_().slice(0, 4)] = o; return m; }
+  return o || {};
+}
 function note_(u, texto, canal) { return { at: iso_(), by: u ? u.nombre : 'Sistema', canal: CANALES.indexOf(canal) >= 0 ? canal : 'Nota', texto: clean_(texto, 1500) }; }
 function rootClientes_() { return DriveApp.getFolderById(props_().getProperty('CLIENTES')); }
 function prospectFolder_(c) {
@@ -587,9 +594,11 @@ function agendaDelete_(d, u) {
 function crmSettings_(d, u) {
   admin_(u);
   if (d.objetivos) {
-    const o = {};
+    const y = /^\d{4}$/.test(String(d.year)) ? String(d.year) : day_().slice(0, 4);
+    const all = objetivos_(), o = {};
     ['anual', 'mensual', 'servicios', 'clientes'].forEach(k => o[k] = Math.max(0, Number(d.objetivos[k]) || 0));
-    props_().setProperty('OBJETIVOS', JSON.stringify(o));
+    all[y] = o;
+    props_().setProperty('OBJETIVOS', JSON.stringify(all));
   }
   if (d.emisor) {
     const e = {};
@@ -664,7 +673,7 @@ function seedCrm_() {
   if (typeof SEED_CRM === 'undefined') { console.log('Falta el archivo DatosCrm.gs con tus datos.'); return; }
   const S0 = SEED_CRM, now = iso_(), p = props_();
   if (S0.emisor && !p.getProperty('EMISOR')) p.setProperty('EMISOR', JSON.stringify(S0.emisor));
-  if (S0.objetivos && !p.getProperty('OBJETIVOS')) p.setProperty('OBJETIVOS', JSON.stringify(S0.objetivos));
+  if (S0.objetivos && !p.getProperty('OBJETIVOS')) { const m = {}; m[day_().slice(0, 4)] = S0.objetivos; p.setProperty('OBJETIVOS', JSON.stringify(m)); }
   if (S0.facturasCarpeta && !p.getProperty('FACTURAS')) p.setProperty('FACTURAS', S0.facturasCarpeta);
   if (S0.solicitudes && !p.getProperty('SOLICITUDES')) { p.setProperty('SOLICITUDES', S0.solicitudes); p.setProperty('SOL_LAST', S0.solicitudesDesde || now); }
   // Clientes: se casan con los que ya existen por NIF o nombre.
@@ -705,4 +714,82 @@ function seedCrm_() {
   if (cal) read_('Contactos').filter(c => c.proxFecha && c.proxFecha >= day_() && !c.evento && ['Perdido', 'Archivado', 'Ganado'].indexOf(c.fase) < 0).forEach(c => { c.evento = calFollow_('', c.proxFecha, c.proxAccion, c.nombre, c.telefono); update_('Contactos', c); });
   p.setProperty('CRM_SEEDED', now);
   console.log('Datos del CRM anterior cargados.');
+}
+
+/* ------------------------------------------------------------------ */
+/* Lectura automática de tickets/facturas y extractos (OCR de Drive)   */
+/* ------------------------------------------------------------------ */
+
+/** Ejecutar una vez desde el editor para dar permiso a la lectura de fotos y extractos. */
+function autorizarLectura() {
+  const r = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/about?fields=user', { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+  console.log(r.getResponseCode() === 200 ? 'Lectura de fotos y extractos autorizada.' : 'Respuesta: ' + r.getContentText());
+}
+function driveConvert_(blob, targetMime, extra) {
+  const boundary = 'xxEMxx' + Date.now();
+  const meta = JSON.stringify({ name: 'tmp-' + Date.now(), mimeType: targetMime });
+  const head = '--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + meta + '\r\n--' + boundary + '\r\nContent-Type: ' + blob.getContentType() + '\r\n\r\n';
+  const body = Utilities.newBlob(head).getBytes().concat(blob.getBytes()).concat(Utilities.newBlob('\r\n--' + boundary + '--').getBytes());
+  const res = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart' + (extra || ''), { method: 'post', contentType: 'multipart/related; boundary=' + boundary, payload: body, headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+  if (res.getResponseCode() >= 300) fail_('No se pudo leer el archivo. Ejecuta autorizarLectura() en el editor.');
+  return JSON.parse(res.getContentText()).id;
+}
+function dataBlob_(dataUrl, name) {
+  const m = String(dataUrl || '').match(/^data:([^;]+);base64,(.+)$/);
+  if (!m) fail_('Archivo no válido.');
+  return Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], name);
+}
+function justFolder_(fecha) {
+  const y = String(fecha).slice(0, 4), q = Math.floor((Number(String(fecha).slice(5, 7)) - 1) / 3) + 1;
+  return folderNamed_(folderNamed_(folderNamed_(DriveApp.getFolderById(props_().getProperty('ROOT')), 'Contabilidad'), y), 'T' + q);
+}
+/** Guarda el justificante y devuelve el texto leído para rellenar el gasto. */
+function accRead_(d, u) {
+  admin_(u);
+  const ext = /pdf/.test(String(d.data).slice(0, 40)) ? '.pdf' : '.jpg';
+  const blob = dataBlob_(d.data, 'Justificante ' + Utilities.formatDate(new Date(), APP.zona, 'yyyy-MM-dd HH.mm') + ext);
+  const file = justFolder_(day_()).createFile(blob);
+  let text = '';
+  try {
+    const id = driveConvert_(blob, 'application/vnd.google-apps.document', '&ocrLanguage=es');
+    const r = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + id + '/export?mimeType=text/plain', { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+    text = r.getContentText();
+    try { DriveApp.getFileById(id).setTrashed(true); } catch (e) {}
+  } catch (e) { text = ''; }
+  return { texto: String(text).slice(0, 20000), justificante: file.getId(), url: file.getUrl(), propio: emisor_().nif || '' };
+}
+/** Convierte un extracto (Excel o CSV) en filas para revisarlas en la app. */
+function bankRead_(d, u) {
+  admin_(u);
+  const blob = dataBlob_(d.data, clean_(d.nombre, 100) || 'extracto');
+  if (/csv|text/.test(blob.getContentType()) || /\.csv$/i.test(String(d.nombre))) { const txt = blob.getDataAsString(); return { filas: Utilities.parseCsv(txt, /;/.test(txt.split('\n')[0]) ? ';' : ',').slice(0, 1500) }; }
+  const id = driveConvert_(blob, 'application/vnd.google-apps.spreadsheet', '');
+  const rows = SpreadsheetApp.openById(id).getSheets()[0].getDataRange().getValues().map(r => r.map(v => Object.prototype.toString.call(v) === '[object Date]' ? Utilities.formatDate(v, APP.zona, 'yyyy-MM-dd') : v));
+  try { DriveApp.getFileById(id).setTrashed(true); } catch (e) {}
+  return { filas: rows.slice(0, 1500) };
+}
+/** Guarda de una vez gastos e impuestos y cobros de facturas (revisados en la app). */
+function accBatch_(d, u) {
+  admin_(u);
+  return locked_(() => {
+    const out = { gastos: 0, cobros: 0 };
+    const rows = (Array.isArray(d.gastos) ? d.gastos : []).slice(0, 500).map(g => {
+      const total = money_(g.total), ivaPct = Math.max(0, Math.min(30, Number(g.ivaPct) || 0));
+      const base = money_(total / (1 + ivaPct / 100));
+      return { id: 'g-' + uid_().slice(0, 8), fecha: dayOk_(g.fecha) || day_(), tipo: TIPO_CONT.indexOf(g.tipo) >= 0 ? g.tipo : 'Gasto', categoria: clean_(g.categoria, 60) || 'Otros', concepto: clean_(g.concepto, 200) || 'Movimiento bancario', proveedor: clean_(g.proveedor, 120), imponible: base, ivaPct: ivaPct, iva: money_(total - base), total: total, deducible: ['Sí', 'No', 'Pendiente'].indexOf(g.deducible) >= 0 ? g.deducible : 'Pendiente', ivaDed: [0, 50, 100].indexOf(Number(g.ivaDed)) >= 0 ? Number(g.ivaDed) : 100, metodo: clean_(g.metodo, 40) || 'Banco', justificante: '', notas: clean_(g.notas, 600), origen: 'Extracto', ref: clean_(g.ref, 120), por: u.nombre, creado: iso_() };
+    }).filter(g => g.total > 0);
+    if (rows.length) { insertMany_('Contabilidad', rows); out.gastos = rows.length; }
+    const fs = read_('Facturas');
+    (Array.isArray(d.cobros) ? d.cobros : []).slice(0, 200).forEach(c => {
+      const f = fs.find(x => x.id === c.id);
+      if (!f || f.estado === 'Anulada') return;
+      const imp = money_(c.importe);
+      if (!(imp > 0)) return;
+      f.cobros = (f.cobros || []).concat([{ fecha: dayOk_(c.fecha) || day_(), importe: imp, metodo: 'Transferencia', por: u.nombre }]);
+      const paid = money_(f.cobros.reduce((n, x) => n + money_(x.importe), 0));
+      f.estado = paid >= money_(f.total) - 0.01 ? 'Cobrada' : 'Parcial';
+      update_('Facturas', f); out.cobros++;
+    });
+    return out;
+  });
 }

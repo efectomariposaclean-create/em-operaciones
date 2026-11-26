@@ -3,7 +3,7 @@
 'use strict';
 
 const CFG = window.EM_CONFIG || {};
-const VERSION = '3.4.0';
+const VERSION = '3.5.0';
 const ROOT = document.getElementById('root');
 
 /* ============================ Utilidades ============================ */
@@ -2242,7 +2242,7 @@ VIEWS.panel = function () {
   if (!isAdmin()) return VIEWS.inicio();
   if (!S.crm) return crmWait('Panel');
   loadCrm();
-  const hoy = C.hoy(), mes = hoy.slice(0, 7), ano = hoy.slice(0, 4), o = S.crm.objetivos || {};
+  const hoy = C.hoy(), mes = hoy.slice(0, 7), ano = hoy.slice(0, 4), o = (S.crm.objetivos || {})[ano] || {};
   const fs = C.facturas();
   const facMes = fs.filter(f => String(f.fecha).slice(0, 7) === mes).reduce((n, f) => n + C.num(f.imponible), 0);
   const facAno = fs.filter(f => String(f.fecha).slice(0, 4) === ano).reduce((n, f) => n + C.num(f.imponible), 0);
@@ -2258,7 +2258,7 @@ VIEWS.panel = function () {
   const kpi = (lbl, val, extra, to, cls) => '<button class="kpi ' + (cls || '') + '" data-act="go" data-to="' + to + '"><small>' + esc(lbl) + '</small><b>' + val + '</b>' + (extra || '') + '</button>';
   const html =
     '<div class="kpis k4">' + kpi('Facturado ' + new Date().toLocaleDateString('es-ES', { month: 'long', timeZone: 'Europe/Madrid' }), C.eur0(facMes), bar(facMes, o.mensual), 'facturas') + kpi('Facturado ' + ano, C.eur0(facAno), bar(facAno, o.anual), 'facturas') +
-    kpi('Por cobrar', C.eur0(pend), '<small class="tiny muted">' + nPend + ' facturas' + (porFac > 0.01 ? ' · <b style="color:var(--warn)">' + C.eur0(porFac) + ' por facturar</b>' : '') + '</small>', 'facturas', pend > 0 ? 'alert' : '') + kpi('Beneficio T' + C.q(hoy) + ' (estimado)', C.eur0(q.beneficio), '<small class="tiny muted">IVA a pagar ' + C.eur0(q.iva303) + '</small>', 'contabilidad') + '</div>' +
+    kpi('Por cobrar', C.eur0(pend), '<small class="tiny muted">' + nPend + ' facturas' + (porFac > 0.01 ? ' · <span style="color:var(--warn);font-weight:650">' + C.eur0(porFac) + ' por facturar</span>' : '') + '</small>', 'facturas', pend > 0 ? 'alert' : '') + kpi('Beneficio T' + C.q(hoy) + ' (estimado)', C.eur0(q.beneficio), '<small class="tiny muted">IVA a pagar ' + C.eur0(q.iva303) + '</small>', 'contabilidad') + '</div>' +
     (revisar ? '<div class="banner warn" style="margin-top:10px">' + icon('target') + '<span class="grow"><b>Revisión de la semana:</b> ' + revisar + ' prospectos por revisar. Vamos con unos 20 al día.</span><button class="btn sm" data-act="go" data-to="comercial/revisar">Revisar</button></div>' : '') +
     (!me().email ? '<div class="banner" style="margin-top:10px">' + icon('user') + '<span class="grow">Completa tu correo y teléfono para recibir avisos.</span><button class="btn sm" id="prof">Completar</button></div>' : '') +
     '<div class="grid2" style="margin-top:12px">' +
@@ -2271,8 +2271,9 @@ VIEWS.panel = function () {
     '<div class="card"><div class="row between"><h2>' + icon('euro', 's') + ' Cobros y anticipos</h2><a class="link small" href="#/facturas">Facturas</a></div><div class="list">' +
     antic.map(f => '<div class="li" data-fac="' + esc(f.id) + '" style="cursor:pointer"><div class="grow"><b>' + esc(f.datos && f.datos.nombre) + '</b><div class="small muted">Resto por facturar · anticipo ' + esc(f.numero) + '</div></div><span class="chip warn">' + C.eur(C.porFacturar(f)) + '</span></div>').join('') +
     (nPend ? fs.filter(f => C.pendiente(f) > 0.01).slice(0, 6).map(f => '<div class="li" data-fac="' + esc(f.id) + '" style="cursor:pointer"><div class="grow"><b>' + esc(f.numero) + ' · ' + esc(f.datos && f.datos.nombre) + '</b><div class="small muted">Por cobrar · ' + C.d(f.fecha) + '</div></div><b class="small">' + C.eur(C.pendiente(f)) + '</b></div>').join('') : (antic.length ? '' : '<p class="small muted" style="padding:8px 0">Todo cobrado y facturado.</p>')) + '</div></div>' +
-    '</div>';
+    '</div>' + yearCard();
   return { title: 'Panel', html: html, mount: el => {
+    $$('[data-py]', el).forEach(b => b.onclick = () => { S.ui.panY = b.dataset.py; render(); });
     $$('[data-fac]', el).forEach(r => r.onclick = () => invoiceSheet(S.crm.facturas.find(f => f.id === r.dataset.fac)));
     const pb = $('#prof', el); if (pb) pb.onclick = profileSheet;
   } };
@@ -2587,6 +2588,27 @@ function invoiceEditor(f, clientId, ant) {
 }
 
 /* ---------- Contabilidad ---------- */
+function yearCalc(y) {
+  y = String(y);
+  const fs = C.facturas().filter(f => String(f.fecha).slice(0, 4) === y), mv = (S.crm.contabilidad || []).filter(m => String(m.fecha).slice(0, 4) === y);
+  const g = mv.filter(m => m.tipo === 'Gasto');
+  const ingresos = fs.reduce((n, f) => n + C.num(f.imponible), 0), gastosDed = g.filter(m => m.deducible === 'Sí').reduce((n, m) => n + C.num(m.imponible), 0);
+  const rep = fs.reduce((n, f) => n + C.num(f.iva), 0), sop = g.filter(m => m.deducible !== 'Pendiente').reduce((n, m) => n + C.num(m.iva) * C.num(m.ivaDed) / 100, 0);
+  const meses = Array.from({ length: 12 }, (_, i) => fs.filter(f => Number(String(f.fecha).slice(5, 7)) === i + 1).reduce((n, f) => n + C.num(f.imponible), 0));
+  const pagos130 = mv.filter(m => m.tipo === 'Impuesto' && /130/.test(m.categoria + m.concepto)).reduce((n, m) => n + C.num(m.total), 0);
+  return { ingresos: ingresos, gastos: g.reduce((n, m) => n + C.num(m.imponible), 0), gastosDed: gastosDed, beneficio: ingresos - gastosDed, rep: rep, sop: sop, iva: rep - sop, meses: meses, nFact: fs.length, pagos130: pagos130, pend: g.filter(m => m.deducible === 'Pendiente').length };
+}
+function yearCard() {
+  const cur = Number(C.hoy().slice(0, 4)), y = Number(S.ui.panY || cur), a = yearCalc(y), b = yearCalc(y - 1), o = (S.crm.objetivos || {})[y] || {};
+  const max = Math.max.apply(null, a.meses.concat(b.meses).concat([1]));
+  const diff = b.ingresos ? Math.round(100 * (a.ingresos - b.ingresos) / b.ingresos) : null;
+  const ended = y < cur;
+  return '<div class="card" style="margin-top:12px"><div class="row between"><h2>' + icon('chart', 's') + ' Año ' + y + (ended ? ' · cierre' : '') + '</h2><div class="row" style="gap:4px">' + [cur - 1, cur].map(v => '<button class="btn sm ' + (v === y ? '' : 'ghost') + '" data-py="' + v + '">' + v + '</button>').join('') + '</div></div>' +
+    '<div class="kpis k4" style="margin-top:10px"><div class="kpi"><small>Facturado (base)</small><b>' + C.eur0(a.ingresos) + '</b>' + (o.anual ? '<small class="tiny muted">' + Math.round(100 * a.ingresos / o.anual) + ' % del objetivo ' + C.eur0(o.anual) + '</small>' : '<small class="tiny muted">Sin objetivo para ' + y + '</small>') + '</div><div class="kpi"><small>Frente a ' + (y - 1) + '</small><b>' + (diff == null ? '—' : (diff >= 0 ? '+' : '') + diff + ' %') + '</b><small class="tiny muted">' + C.eur0(b.ingresos) + ' en ' + (y - 1) + '</small></div><div class="kpi"><small>Gastos deducibles</small><b>' + C.eur0(a.gastosDed) + '</b></div><div class="kpi"><small>Beneficio</small><b>' + C.eur0(a.beneficio) + '</b></div></div>' +
+    '<div class="yr-bars">' + a.meses.map((v, i) => '<div><i class="prev" style="height:' + Math.round(100 * b.meses[i] / max) + '%" title="' + (y - 1) + ': ' + C.eur0(b.meses[i]) + '"></i><i style="height:' + Math.round(100 * v / max) + '%" title="' + y + ': ' + C.eur0(v) + '"></i></div>').join('') + '</div><div class="yr-lbl">' + 'EFMAMJJASOND'.split('').map(x => '<span>' + x + '</span>').join('') + '</div>' +
+    '<div class="row small muted" style="gap:14px;margin-top:6px"><span><i class="dot" style="background:var(--green)"></i>' + y + '</span><span><i class="dot" style="background:#c9d6dc"></i>' + (y - 1) + '</span></div>' +
+    '<details style="margin-top:10px"><summary class="link small" style="cursor:pointer">Resumen fiscal del año (orientativo)</summary><dl class="kv" style="margin-top:8px"><dt>Facturas emitidas</dt><dd>' + a.nFact + '</dd><dt>IVA repercutido</dt><dd>' + C.eur(a.rep) + '</dd><dt>IVA soportado deducible</dt><dd>' + C.eur(a.sop) + '</dd><dt><b>Resultado IVA del año (390)</b></dt><dd><b>' + C.eur(a.iva) + '</b></dd><dt>Rendimiento neto (renta)</dt><dd>' + C.eur(a.beneficio) + '</dd><dt>Pagos a cuenta 130</dt><dd>' + C.eur(a.pagos130) + '</dd></dl>' + (a.pend ? '<p class="tiny" style="color:var(--warn)">' + a.pend + ' gastos sin revisar no cuentan.</p>' : '') + '<p class="tiny muted">Cálculo orientativo con lo registrado. Confírmalo con tu gestor.</p></details></div>';
+}
 function quarterCalc(y, q) {
   const from = y + '-' + String((q - 1) * 3 + 1).padStart(2, '0') + '-01', to = q === 4 ? y + '-12-31' : shiftDay(y + '-' + String(q * 3 + 1).padStart(2, '0') + '-01', -1);
   const inQ = d => String(d).slice(0, 10) >= from && String(d).slice(0, 10) <= to, ytd = d => String(d).slice(0, 4) === String(y) && String(d).slice(0, 10) <= to;
@@ -2613,28 +2635,35 @@ VIEWS.contabilidad = function () {
   const filtro = S.ui.accF || 'todos';
   let movs = S.crm.contabilidad.filter(m => m.tipo !== 'Anulado' && m.fecha >= r.from && m.fecha <= r.to).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
   if (filtro === 'pend') movs = movs.filter(m => m.deducible === 'Pendiente');
+  const plazo = { 1: '20 de abril', 2: '20 de julio', 3: '20 de octubre', 4: '30 de enero' }[q];
+  const pendN = S.crm.contabilidad.filter(m => m.tipo === 'Gasto' && m.deducible === 'Pendiente').length;
   const html =
-    '<div class="row" style="gap:8px"><div class="seg grow">' + [1, 2, 3, 4].map(n => '<button data-q="' + n + '" class="' + (n === q ? 'on' : '') + '">T' + n + '</button>').join('') + '</div><select class="in" id="ay" style="width:auto">' + [y + 1, y, y - 1].filter(v => v <= Number(hoy.slice(0, 4))).map(v => '<option ' + (v === y ? 'selected' : '') + '>' + v + '</option>').join('') + '</select></div>' +
+    '<div class="acc-acts"><button id="aph">' + icon('camera') + 'Foto</button><button id="avo">' + icon('mic') + 'Dictar</button><button id="abk">' + icon('download') + 'Extracto</button><button id="gnew">' + icon('edit') + 'A mano</button></div>' +
+    '<div class="acc-say">En el <b>' + q + '.º trimestre de ' + y + '</b> has facturado <b>' + C.eur0(r.ingresos) + '</b> y tienes <b>' + C.eur0(r.gastosDed) + '</b> de gastos deducibles. Beneficio: <b>' + C.eur0(r.beneficio) + '</b>. IVA a pagar: <b>' + C.eur0(Math.max(0, r.iva303)) + '</b>' + (r.iva303 < 0 ? ' (sale a compensar ' + C.eur0(-r.iva303) + ')' : '') + ', con plazo hasta el ' + plazo + '.' + (pendN ? ' <a class="link" href="#/contabilidad" data-f="pend">' + pendN + ' gastos por revisar</a>.' : '') + '</div>' +
+    '<div class="row" style="gap:8px;margin-top:14px"><div class="seg grow">' + [1, 2, 3, 4].map(n => '<button data-q="' + n + '" class="' + (n === q ? 'on' : '') + '">T' + n + '</button>').join('') + '</div><select class="in" id="ay" style="width:auto">' + [y + 1, y, y - 1].filter(v => v <= Number(hoy.slice(0, 4))).map(v => '<option ' + (v === y ? 'selected' : '') + '>' + v + '</option>').join('') + '</select></div>' +
     '<div class="kpis k4" style="margin-top:10px"><div class="kpi"><small>Ingresos (base)</small><b>' + C.eur0(r.ingresos) + '</b></div><div class="kpi"><small>Gastos deducibles</small><b>' + C.eur0(r.gastosDed) + '</b><small class="tiny muted">de ' + C.eur0(r.gastos) + ' registrados</small></div><div class="kpi"><small>Beneficio</small><b>' + C.eur0(r.beneficio) + '</b></div><div class="kpi"><small>IVA 303 (est.)</small><b>' + C.eur0(r.iva303) + '</b></div></div>' +
     '<div class="card" style="margin-top:10px"><div class="row between"><h2>Trimestre ' + q + ' · ' + y + '</h2><span class="small muted">' + C.d(r.from) + ' – ' + C.d(r.to) + '</span></div>' +
     '<div class="grid2" style="margin-top:8px"><dl class="kv"><dt>IVA repercutido</dt><dd>' + C.eur(r.repercutido) + '</dd><dt>IVA soportado deducible</dt><dd>' + C.eur(r.soportado) + '</dd><dt><b>Modelo 303</b></dt><dd><b>' + C.eur(r.iva303) + '</b></dd></dl>' +
     '<dl class="kv"><dt>Rendimiento acumulado</dt><dd>' + C.eur(r.rend) + '</dd><dt>Pagos 130 anteriores</dt><dd>' + C.eur(r.prev130) + '</dd><dt><b>Modelo 130 (20 %)</b></dt><dd><b>' + C.eur(r.m130) + '</b></dd></dl></div>' +
     (r.pendientes ? '<div class="banner warn" style="margin-top:10px">' + icon('alert') + '<span class="grow">' + r.pendientes + ' gastos sin revisar no cuentan en el cálculo. Revísalos con el ticket.</span><button class="btn sm" data-f="pend">Ver</button></div>' : '') +
     '<p class="tiny muted" style="margin-top:8px">Estimación orientativa con lo registrado aquí. Confírmala con tu gestor antes de presentar.</p></div>' +
-    '<div class="row" style="gap:8px;margin-top:12px"><div class="seg grow"><button data-f="todos" class="' + (filtro === 'todos' ? 'on' : '') + '">Movimientos</button><button data-f="pend" class="' + (filtro === 'pend' ? 'on' : '') + '">Por revisar</button></div><button class="btn green" id="gnew">' + icon('plus') + '<span class="hide-s">Gasto</span></button></div>' +
-    '<div class="card list" style="padding:2px 14px;margin-top:10px">' + (movs.length ? movs.map(m => '<div class="li" data-g="' + esc(m.id) + '" style="cursor:pointer"><div class="grow" style="min-width:0"><b class="ellipsis" style="display:block">' + esc(m.concepto) + '</b><div class="small muted ellipsis">' + C.d(m.fecha) + ' · ' + esc(m.categoria) + (m.origen === 'Almacén' ? ' · almacén' : '') + '</div></div><div style="text-align:right"><b class="small">' + C.eur(m.total) + '</b><div>' + (m.tipo === 'Impuesto' ? '<span class="chip info">Impuesto</span>' : m.tipo === 'Excluido' ? '<span class="chip">Personal</span>' : m.deducible === 'Pendiente' ? '<span class="chip warn">Revisar</span>' : m.deducible === 'Sí' ? '<span class="chip ok">Deducible</span>' : '<span class="chip">No deduce</span>') + '</div></div></div>').join('') : '<p class="small muted" style="padding:12px 0">Sin movimientos en este trimestre.</p>') + '</div>' +
+    '<div class="row" style="gap:8px;margin-top:12px"><div class="seg grow"><button data-f="todos" class="' + (filtro === 'todos' ? 'on' : '') + '">Movimientos</button><button data-f="pend" class="' + (filtro === 'pend' ? 'on' : '') + '">Por revisar</button></div></div>' +
+    '<div class="card list" style="padding:2px 14px;margin-top:10px">' + (movs.length ? movs.map(m => '<div class="li" data-g="' + esc(m.id) + '" style="cursor:pointer"><div class="grow" style="min-width:0"><b class="ellipsis" style="display:block">' + esc(m.concepto) + '</b><div class="small muted ellipsis">' + C.d(m.fecha) + ' · ' + esc(m.categoria) + (m.origen === 'Almacén' ? ' · almacén' : m.origen === 'Extracto' ? ' · banco' : '') + (m.justificante ? ' · 📎' : '') + '</div></div><div style="text-align:right"><b class="small">' + C.eur(m.total) + '</b><div>' + (m.tipo === 'Impuesto' ? '<span class="chip info">Impuesto</span>' : m.tipo === 'Excluido' ? '<span class="chip">Personal</span>' : m.deducible === 'Pendiente' ? '<span class="chip warn">Revisar</span>' : m.deducible === 'Sí' ? '<span class="chip ok">Deducible</span>' : '<span class="chip">No deduce</span>') + '</div></div></div>').join('') : '<p class="small muted" style="padding:12px 0">Sin movimientos en este trimestre.</p>') + '</div>' +
     '<button class="btn ghost wide" style="margin-top:12px" id="aset">' + icon('sliders') + 'Objetivos y datos de facturación</button>';
   return { title: 'Contabilidad', html: html, mount: el => {
     $$('[data-q]', el).forEach(b => b.onclick = () => { S.ui.accQ = b.dataset.q; render(); });
     $('#ay', el).onchange = e => { S.ui.accY = e.target.value; render(); };
     $$('[data-f]', el).forEach(b => b.onclick = () => { S.ui.accF = b.dataset.f; render(); });
     $('#gnew', el).onclick = () => accSheet(null);
+    $('#aph', el).onclick = photoExpense;
+    $('#avo', el).onclick = () => voiceExpense($('#avo', el));
+    $('#abk', el).onclick = bankImport;
     $$('[data-g]', el).forEach(r => r.onclick = () => accSheet(S.crm.contabilidad.find(m => m.id === r.dataset.g)));
     $('#aset', el).onclick = settingsSheet;
   } };
 };
-function accSheet(m) {
-  const st = m ? Object.assign({}, m) : { fecha: madridDay(), tipo: 'Gasto', categoria: 'Combustible', concepto: '', proveedor: '', total: '', ivaPct: 21, deducible: 'Sí', ivaDed: 100, metodo: 'Tarjeta', notas: '' };
+function accSheet(m, pre) {
+  const st = m ? Object.assign({}, m) : Object.assign({ fecha: madridDay(), tipo: 'Gasto', categoria: 'Combustible', concepto: '', proveedor: '', total: '', ivaPct: 21, deducible: 'Sí', ivaDed: 100, metodo: 'Tarjeta', notas: '', justificante: '' }, pre || {});
   const cats = (S.crm.categorias || []).concat(['Modelo 303', 'Modelo 130', 'Gasto particular']);
   sheet(m ? 'Movimiento' : 'Nuevo gasto', '<div class="seg" id="at">' + [['Gasto', 'Gasto'], ['Impuesto', 'Impuesto pagado'], ['Excluido', 'Personal']].map(t => '<button type="button" data-t="' + t[0] + '" class="' + (st.tipo === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div>' +
     '<div class="two"><div><label class="f">Fecha</label><input type="date" class="in" id="af" value="' + esc(String(st.fecha).slice(0, 10)) + '"></div><div><label class="f">Total pagado</label><input class="in" id="atot" inputmode="decimal" value="' + esc(st.total === '' ? '' : String(st.total).replace('.', ',')) + '"></div></div>' +
@@ -2643,11 +2672,12 @@ function accSheet(m) {
     '<div class="two"><div><label class="f">IVA del ticket %</label><select class="in" id="aiv">' + [21, 10, 4, 0].map(v => '<option ' + (Number(st.ivaPct) === v ? 'selected' : '') + '>' + v + '</option>').join('') + '</select></div><div><label class="f">Forma de pago</label><input class="in" id="am" value="' + esc(st.metodo || '') + '"></div></div>' +
     '<div class="two"><div><label class="f">¿Deducible en IRPF?</label><select class="in" id="ad">' + ['Sí', 'No', 'Pendiente'].map(v => '<option ' + (st.deducible === v ? 'selected' : '') + '>' + v + '</option>').join('') + '</select></div><div><label class="f">IVA deducible</label><select class="in" id="aid">' + [[100, '100 %'], [50, '50 % (uso mixto)'], [0, 'Nada']].map(v => '<option value="' + v[0] + '" ' + (Number(st.ivaDed) === v[0] ? 'selected' : '') + '>' + v[1] + '</option>').join('') + '</select></div></div>' +
     '<label class="f">Notas</label><textarea class="in" id="an">' + esc(typeof st.notas === 'string' ? st.notas : '') + '</textarea>' +
+    (st.justificante ? '<a class="btn sm ghost" style="margin-top:8px" target="_blank" rel="noopener" href="https://drive.google.com/file/d/' + esc(st.justificante) + '/view">' + icon('file', 's') + 'Ver justificante</a>' : '') +
     '<div class="actions">' + (m ? '<button class="btn danger" id="adel">Anular</button>' : '') + '<button class="btn" id="asv">Guardar</button></div>', (el, close) => {
     let tipo = st.tipo;
     $$('[data-t]', el).forEach(b => b.onclick = () => { tipo = b.dataset.t; $$('[data-t]', el).forEach(x => x.classList.toggle('on', x === b)); if (tipo !== 'Gasto') { $('#ad', el).value = 'No'; $('#aid', el).value = '0'; $('#aiv', el).value = '0'; } });
     $('#asv', el).onclick = async () => {
-      const body = { id: m ? m.id : '', tipo: tipo, fecha: $('#af', el).value, total: C.num($('#atot', el).value), concepto: $('#ac', el).value, categoria: $('#acat', el).value, proveedor: $('#ap', el).value, ivaPct: $('#aiv', el).value, metodo: $('#am', el).value, deducible: $('#ad', el).value, ivaDed: $('#aid', el).value, notas: $('#an', el).value };
+      const body = { id: m ? m.id : '', justificante: st.justificante || '', tipo: tipo, fecha: $('#af', el).value, total: C.num($('#atot', el).value), concepto: $('#ac', el).value, categoria: $('#acat', el).value, proveedor: $('#ap', el).value, ivaPct: $('#aiv', el).value, metodo: $('#am', el).value, deducible: $('#ad', el).value, ivaDed: $('#aid', el).value, notas: $('#an', el).value };
       if (!body.concepto.trim() || !(body.total > 0)) return toast('Indica concepto e importe.', true);
       if (await command(async () => { await api('accSave', body); await loadCrm(true); }, 'Guardado')) { close(); render(); }
     };
@@ -2655,14 +2685,168 @@ function accSheet(m) {
   });
 }
 function settingsSheet() {
-  const o = S.crm.objetivos || {}, e = S.crm.emisor || {};
+  const oy = String(S.ui.objY || C.hoy().slice(0, 4)), o = (S.crm.objetivos || {})[oy] || {}, e = S.crm.emisor || {};
   const f = (id, l, v, ph) => '<div><label class="f">' + l + '</label><input class="in" id="' + id + '" value="' + esc(v == null ? '' : v) + '" placeholder="' + esc(ph || '') + '"></div>';
-  sheet('Objetivos y facturación', '<h3>Objetivos</h3><div class="two">' + f('oa', 'Facturación anual (base)', o.anual) + f('om', 'Facturación mensual', o.mensual) + '</div><div class="two">' + f('os', 'Servicios al año', o.servicios) + f('oc', 'Clientes nuevos al año', o.clientes) + '</div>' +
+  sheet('Objetivos y facturación', '<div class="row between"><h3>Objetivos de ' + oy + '</h3><div class="row" style="gap:4px">' + [Number(C.hoy().slice(0, 4)), Number(C.hoy().slice(0, 4)) + 1].map(v => '<button type="button" class="btn sm ' + (String(v) === oy ? '' : 'ghost') + '" data-oy="' + v + '">' + v + '</button>').join('') + '</div></div><div class="two">' + f('oa', 'Facturación anual (base)', o.anual) + f('om', 'Facturación mensual', o.mensual) + '</div><div class="two">' + f('os', 'Servicios al año', o.servicios) + f('oc', 'Clientes nuevos al año', o.clientes) + '</div>' +
     '<h3 style="margin-top:16px">Datos que salen en tus facturas</h3>' + f('en', 'Nombre comercial', e.nombre) + '<div class="two">' + f('et', 'Titular', e.titular) + f('ei', 'NIF', e.nif) + '</div>' + f('ed', 'Dirección', e.direccion) + '<div class="two">' + f('ef', 'Teléfono', e.telefono) + f('ee', 'Correo', e.email) + '</div><div class="two">' + f('ew', 'Web', e.web) + f('eb', 'IBAN', e.iban) + '</div><div class="two">' + f('ep', 'Forma de pago', e.pago) + f('ec', 'Condiciones', e.condiciones, 'Pago a 15 días') + '</div>' +
     '<div class="actions"><button class="btn" id="ssv">Guardar</button></div>', (el, close) => {
+    $$('[data-oy]', el).forEach(b => b.onclick = () => { S.ui.objY = b.dataset.oy; close(); settingsSheet(); });
     $('#ssv', el).onclick = async () => {
       const v = id => $('#' + id, el).value;
-      if (await command(async () => { await api('crmSettings', { objetivos: { anual: C.num(v('oa')), mensual: C.num(v('om')), servicios: C.num(v('os')), clientes: C.num(v('oc')) }, emisor: { nombre: v('en'), titular: v('et'), nif: v('ei'), direccion: v('ed'), telefono: v('ef'), email: v('ee'), web: v('ew'), iban: v('eb'), pago: v('ep'), condiciones: v('ec') } }); await loadCrm(true); }, 'Guardado')) { close(); render(); }
+      if (await command(async () => { await api('crmSettings', { year: oy, objetivos: { anual: C.num(v('oa')), mensual: C.num(v('om')), servicios: C.num(v('os')), clientes: C.num(v('oc')) }, emisor: { nombre: v('en'), titular: v('et'), nif: v('ei'), direccion: v('ed'), telefono: v('ef'), email: v('ee'), web: v('ew'), iban: v('eb'), pago: v('ep'), condiciones: v('ec') } }); await loadCrm(true); }, 'Guardado')) { close(); render(); }
+    };
+  });
+}
+
+/* ---------- Contabilidad 2.0: foto, voz, extracto ---------- */
+const BRANDS = [[/REPSOL|CEPSA|GALP|SHELL|\bBP\b|PLENOIL|BALLENOIL|PETRONOR|GASOLINERA|CARBURANTE|GASOIL|GASOLINA|DIESEL/, 'Combustible', 21], [/AUTOPISTA|PEAJE|PARKING|APARCAMIENTO|EMT|EMPARK|TELPARK/, 'Peajes y parking', 21],
+  [/MAPFRE|MUTUA|AXA|ALLIANZ|GENERALI|LINEA DIRECTA|SEGURO/, 'Seguros', 0], [/TGSS|SEGURIDAD SOCIAL|AUTONOMO|RETA\b/, 'Seguridad Social', 0], [/AEAT|AGENCIA TRIBUTARIA|HACIENDA|MODELO 303|MODELO 130|IMPUESTO/, 'Impuesto', 0],
+  [/MOVISTAR|VODAFONE|ORANGE|DIGI|JAZZTEL|\bO2\b|YOIGO|LOWI|SIMYO|\bFIBRA\b/, 'Teléfono e internet', 21], [/LEROY|BRICO|BAUHAUS|FERRETER|WURTH|WÜRTH/, 'Herramientas', 21], [/AMAZON|ALIEXPRESS|TEMU/, 'Material', 21],
+  [/KOCH|DATACOL|CUEROLIQUIDO|KÄRCHER|KARCHER|DETAIL/, 'Productos', 21], [/GOOGLE|CANVA|ADOBE|MICROSOFT|OPENAI|ANTHROPIC|CHATGPT|CLAUDE|METRICOOL|SOFTWARE/, 'Software', 21], [/META|FACEBOOK|INSTAGRAM|ADS\b|PUBLICIDAD/, 'Publicidad', 21],
+  [/COMISION|COMISIÓN|MANTENIMIENTO CUENTA/, 'Comisiones bancarias', 0], [/GESTOR|ASESOR/, 'Gestoría', 21], [/TALLER|NEUMATIC|ITV|MIDAS|NORAUTO|FEU VERT|LAVADO/, 'Vehículo', 21]];
+const MARCAS = [['REPSOL', 'Repsol'], ['CEPSA', 'Cepsa'], ['GALP', 'Galp'], ['SHELL', 'Shell'], ['PLENOIL', 'Plenoil'], ['BALLENOIL', 'Ballenoil'], ['PETRONOR', 'Petronor'], ['MAPFRE', 'Mapfre'], ['MUTUA', 'Mutua Madrileña'], ['AXA', 'AXA'], ['ALLIANZ', 'Allianz'], ['GENERALI', 'Generali'], ['LINEA DIRECTA', 'Línea Directa'], ['MOVISTAR', 'Movistar'], ['VODAFONE', 'Vodafone'], ['ORANGE', 'Orange'], ['DIGI', 'Digi'], ['LEROY', 'Leroy Merlin'], ['BAUHAUS', 'Bauhaus'], ['WURTH', 'Würth'], ['AMAZON', 'Amazon'], ['ALIEXPRESS', 'AliExpress'], ['KOCH', 'Koch-Chemie'], ['DATACOL', 'Datacol'], ['CUEROLIQUIDO', 'Cuero Líquido'], ['KARCHER', 'Kärcher'], ['NORAUTO', 'Norauto'], ['MIDAS', 'Midas'], ['GOOGLE', 'Google'], ['CANVA', 'Canva'], ['METRICOOL', 'Metricool'], ['TGSS', 'Seguridad Social'], ['AEAT', 'Agencia Tributaria'], ['AGENCIA TRIBUTARIA', 'Agencia Tributaria']];
+function guessCat(txt) {
+  const t = String(txt || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const mk = MARCAS.find(m => new RegExp('\\b' + m[0] + '\\b').test(t));
+  for (const b of BRANDS) if (b[0].test(t)) return { categoria: b[1], ivaPct: b[2], marca: mk ? mk[1] : '' };
+  return mk ? { categoria: 'Otros', ivaPct: 21, marca: mk[1] } : null;
+}
+function numES(v) { v = String(v).trim().replace(/[€\s]/g, ''); if (/,\d{1,2}$/.test(v)) v = v.replace(/\./g, '').replace(',', '.'); else if (/\.\d{3}(\.|$)/.test(v) && !/\.\d{1,2}$/.test(v)) v = v.replace(/\./g, ''); return Number(v); }
+function parseTicket(text, propio) {
+  const T = String(text || ''), L = T.split(/\r?\n/).map(x => x.trim()).filter(Boolean), up = T.toUpperCase();
+  const amt = /(-?\d{1,3}(?:[.\s]\d{3})*,\d{2}|-?\d+[.,]\d{2})(?!\d)/g;
+  const amountsIn = l => (l.match(amt) || []).map(numES).filter(n => n > 0 && n < 100000);
+  let total = 0, base = 0, iva = 0, ivaPct = 0;
+  for (let i = 0; i < L.length; i++) {
+    const l = L[i].toUpperCase();
+    if (/TOTAL/.test(l) && !/SUBTOTAL|TOTAL BASE|BASE IMP|SIN IVA/.test(l)) { const a = amountsIn(L[i]).concat(i + 1 < L.length ? amountsIn(L[i + 1]) : []); if (a.length) total = Math.max(total, a[a.length - 1] > 0 ? Math.max.apply(null, a) : 0); }
+    if (/BASE/.test(l) && !base) { const a = amountsIn(L[i]).concat(i + 1 < L.length ? amountsIn(L[i + 1]) : []); if (a.length) base = a[0]; }
+    if (/I\.?V\.?A|IMPUESTO/.test(l)) { const p = l.match(/(21|10|4)\s*%/); if (p) ivaPct = Number(p[1]); const a = amountsIn(L[i]); if (a.length && !iva) iva = a[a.length - 1]; }
+  }
+  if (!total) { const all = amountsIn(T); if (all.length) total = Math.max.apply(null, all); }
+  if (!ivaPct) { const p = up.match(/(21|10|4)[,.]?0*\s*%/); ivaPct = p ? Number(p[1]) : (iva && base ? Math.round(iva / base * 100) : 21); }
+  if ([21, 10, 4, 0].indexOf(ivaPct) < 0) ivaPct = 21;
+  let fecha = '';
+  const fm = T.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/) || null, fi = T.match(/(20\d{2})-(\d{2})-(\d{2})/);
+  if (fi) fecha = fi[1] + '-' + fi[2] + '-' + fi[3];
+  else if (fm) { const y = fm[3].length === 2 ? '20' + fm[3] : fm[3]; fecha = y + '-' + pad(Number(fm[2])) + '-' + pad(Number(fm[1])); }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || fecha > madridDay() || fecha < '2020-01-01') fecha = madridDay();
+  const nifs = (up.match(/\b([A-HJNPQRSUVW]-?\d{7}[0-9A-J]|\d{8}-?[A-Z])\b/g) || []).map(x => x.replace('-', '')).filter(x => x !== String(propio || '').toUpperCase());
+  const g = guessCat(T);
+  let prov = g && g.marca ? g.marca : '';
+  if (!prov) { const cand = L.slice(0, 6).find(l => /[A-Za-zÁÉÍÓÚÑ]{3}/.test(l) && !/FACTURA|TICKET|SIMPLIFICADA|FECHA|CIF|NIF|TEL|C\/|CALLE|AVDA|WWW|@/i.test(l)); prov = cand ? cand.slice(0, 60) : ''; }
+  return { fecha: fecha, total: total ? Math.round(total * 100) / 100 : '', ivaPct: g && g.ivaPct === 0 ? 0 : ivaPct, proveedor: prov, nif: nifs[0] || '', categoria: g ? g.categoria : 'Otros', concepto: (g ? g.categoria : 'Compra') + (prov ? ' · ' + prov : '') };
+}
+async function photoExpense() {
+  const files = await pickFiles(); if (!files.length) return;
+  const f = files[0];
+  toast('Leyendo el ticket…');
+  let data;
+  try { data = /pdf/.test(f.type) ? await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); }) : await compress(f, 2000, 0.88); } catch (e) { return toast(e.message, true); }
+  let r; if (!(await command(async () => { r = await api('accRead', { data: data }, 120000); }))) return;
+  const p = parseTicket(r.texto, r.propio);
+  if (!r.texto) toast('No he podido leer el texto. Rellénalo a mano; la foto queda guardada.', true);
+  accSheet(null, Object.assign(p, { justificante: r.justificante, deducible: p.categoria === 'Impuesto' ? 'No' : 'Sí', tipo: p.categoria === 'Impuesto' ? 'Impuesto' : 'Gasto', notas: p.nif ? 'NIF proveedor: ' + p.nif : '' }));
+}
+/* Dictado por voz con preguntas */
+function speak(t) { try { const u = new SpeechSynthesisUtterance(t); u.lang = 'es-ES'; speechSynthesis.cancel(); speechSynthesis.speak(u); return new Promise(res => { u.onend = res; setTimeout(res, 4000); }); } catch (e) { return Promise.resolve(); } }
+function listen() {
+  return new Promise((res, rej) => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) return rej(new Error('Tu navegador no permite dictar. Prueba con Chrome.'));
+    const r = new SR(); r.lang = 'es-ES'; r.interimResults = false;
+    let done = false; r.onresult = e => { done = true; res(e.results[0][0].transcript); }; r.onerror = e => { if (!done) rej(new Error('No te he oído bien.')); }; r.onend = () => { if (!done) rej(new Error('No te he oído.')); }; r.start();
+  });
+}
+const NUMW = { un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12, quince: 15, veinte: 20, treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90, cien: 100, ciento: 100, doscientos: 200, trescientos: 300, quinientos: 500, mil: 1000 };
+function parseVoice(t, st) {
+  const s0 = ' ' + String(t).toLowerCase() + ' ';
+  let m = s0.match(/(\d+(?:[.,]\d{1,2})?)\s*(?:€|euros?|con\s+(\d{1,2}))?/);
+  if (m) { st.total = Number(m[1].replace(',', '.')) + (m[2] ? Number(m[2]) / 100 : 0); }
+  else { let n = 0, any = false; s0.split(/\s+/).forEach(w => { if (NUMW[w] != null) { n = w === 'mil' ? (n || 1) * 1000 : n + NUMW[w]; any = true; } }); if (any && /euro/.test(s0)) st.total = n; }
+  if (/\bhoy\b/.test(s0)) st.fecha = madridDay(); else if (/anteayer/.test(s0)) st.fecha = shiftDay(madridDay(), -2); else if (/\bayer\b/.test(s0)) st.fecha = shiftDay(madridDay(), -1);
+  const MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const dm = s0.match(/(?:el\s+)?(\d{1,2})\s+de\s+([a-z]+)/); if (dm && MES.indexOf(dm[2]) >= 0) { let y = Number(madridDay().slice(0, 4)); const f = y + '-' + pad(MES.indexOf(dm[2]) + 1) + '-' + pad(Number(dm[1])); st.fecha = f > madridDay() ? (y - 1) + f.slice(4) : f; }
+  [['tarjeta', 'Tarjeta'], ['efectivo', 'Efectivo'], ['bizum', 'Bizum'], ['transferencia', 'Transferencia'], ['domicilia', 'Domiciliación']].forEach(x => { if (s0.indexOf(x[0]) >= 0) st.metodo = x[1]; });
+  const kw = /material|microfibra|bayeta|cepillo|guante|toalla/.test(s0) ? { categoria: 'Material', ivaPct: 21 } : /producto|limpiador|champ[uú]|desengrasante/.test(s0) ? { categoria: 'Productos', ivaPct: 21 } : /herramienta|m[aá]quina|aspirador/.test(s0) ? { categoria: 'Herramientas', ivaPct: 21 } : null;
+  const g = guessCat(s0);
+  if (kw || (g && g.categoria !== 'Otros')) { const c = kw || g; st.categoria = c.categoria; st.ivaPct = c.ivaPct; }
+  if (g && g.marca) st.proveedor = g.marca;
+  const en = s0.match(/\ben\s+([a-záéíóúñ0-9][a-záéíóúñ0-9\s]{1,25}?)(?=\s+(?:con|por|de|el|hoy|ayer|pagado|\d)|\s*$)/); if (en && !st.proveedor) st.proveedor = en[1].trim().replace(/^\w/, c => c.toUpperCase());
+  if (/no (es )?deducible|personal|particular/.test(s0)) { st.deducible = 'No'; st.tipo = 'Excluido'; }
+  if (!st.concepto) st.concepto = String(t).trim().replace(/^\w/, c => c.toUpperCase()).slice(0, 120);
+  return st;
+}
+async function voiceExpense(btn) {
+  const st = {};
+  try {
+    if (btn) btn.classList.add('rec');
+    await speak('Dime el gasto. Por ejemplo: gasolina sesenta euros hoy en Repsol con tarjeta.');
+    parseVoice(await listen(), st);
+    for (let k = 0; k < 2 && !(st.total > 0); k++) { await speak('¿Cuánto ha sido?'); parseVoice(await listen(), st); }
+    if (!st.categoria) { await speak('¿De qué es el gasto? Combustible, material, productos, seguro…'); const a = await listen(); parseVoice(a, st); if (!st.categoria) st.categoria = 'Otros'; }
+    if (!st.metodo) { await speak('¿Cómo lo pagaste? Tarjeta, efectivo o bizum.'); parseVoice(await listen(), st); }
+    await speak('Listo. Revísalo y pulsa guardar.');
+  } catch (e) { toast(e.message, true); if (!st.total) { if (btn) btn.classList.remove('rec'); return; } }
+  if (btn) btn.classList.remove('rec');
+  accSheet(null, Object.assign({ fecha: madridDay(), tipo: st.categoria === 'Impuesto' ? 'Impuesto' : 'Gasto', deducible: st.categoria === 'Impuesto' ? 'No' : 'Sí', ivaPct: st.ivaPct == null ? 21 : st.ivaPct }, st, { notas: 'Dictado: ' + (st.concepto || '') }));
+}
+/* Extracto bancario */
+async function bankImport() {
+  const files = await new Promise(res => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.xls,.xlsx,.csv,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'; i.onchange = () => res(Array.from(i.files || [])); i.click(); });
+  if (!files.length) return;
+  const f = files[0];
+  const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
+  let r; if (!(await command(async () => { r = await api('bankRead', { data: data.replace(/^data:[^;]*;/, 'data:' + (f.type || (/\.csv$/i.test(f.name) ? 'text/csv' : 'application/vnd.ms-excel')) + ';'), nombre: f.name }, 120000); }))) return;
+  const rows = r.filas || [];
+  const hi = rows.findIndex(x => { const t = x.join(' ').toUpperCase(); return /FECHA/.test(t) && /(IMPORTE|CARGO|ABONO|CANTIDAD)/.test(t); });
+  if (hi < 0) return toast('No reconozco el formato del extracto. Mándamelo por el chat y lo adapto.', true);
+  const H = rows[hi].map(x => String(x).toUpperCase());
+  const ci = re => H.findIndex(h => re.test(h));
+  const cF = ci(/FECHA VALOR|F\. VALOR/) >= 0 ? ci(/FECHA VALOR|F\. VALOR/) : ci(/FECHA/), cC = ci(/CONCEPTO|DESCRIPCI|DETALLE|MOVIMIENTO/), cI = ci(/IMPORTE|CANTIDAD/), cCar = ci(/CARGO|DEBE/), cAb = ci(/ABONO|HABER/), cO = ci(/OBSERV|INFORMACI|REFERENCIA/);
+  const toDay = v => { v = String(v).trim(); if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10); const m = v.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/); return m ? (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + pad(Number(m[2])) + '-' + pad(Number(m[1])) : ''; };
+  const val = v => typeof v === 'number' ? v : numES(v);
+  const movs = rows.slice(hi + 1).map((x, i) => { const imp = cI >= 0 ? val(x[cI]) : (val(x[cAb]) || 0) - (val(x[cCar]) || 0); return { i: i, fecha: toDay(x[cF]), concepto: String([x[cC], cO >= 0 ? x[cO] : ''].filter(Boolean).join(' · ')).trim(), importe: Math.round((imp || 0) * 100) / 100 }; }).filter(m => m.fecha && m.importe);
+  if (!movs.length) return toast('El extracto no tiene movimientos.', true);
+  bankSheet(movs);
+}
+function bankSheet(movs) {
+  const yaGasto = (S.crm.contabilidad || []).filter(m => m.tipo !== 'Anulado');
+  const facts = C.facturas();
+  const cats = (S.crm.categorias || []);
+  movs.forEach(m => {
+    const a = Math.abs(m.importe);
+    const dup = m.importe < 0 ? yaGasto.find(g => Math.abs(C.num(g.total) - a) < 0.02 && Math.abs(C.days(g.fecha) - C.days(m.fecha)) <= 3) : facts.find(f => (f.cobros || []).some(c => Math.abs(C.num(c.importe) - a) < 0.02 && Math.abs(C.days(c.fecha) - C.days(m.fecha)) <= 5));
+    m.dup = !!dup;
+    if (m.importe > 0) {
+      const t = norm(m.concepto);
+      const f = facts.find(f => C.pendiente(f) > 0.01 && Math.abs(C.pendiente(f) - a) < 0.02 && (t.indexOf(norm(String(f.datos && f.datos.nombre).split(' ')[0])) >= 0 || true)) || facts.find(f => C.pendiente(f) > 0.01 && Math.abs(C.num(f.total) - a) < 0.02);
+      m.sug = m.dup ? 'skip' : f ? 'cobro:' + f.id : 'skip';
+    } else {
+      const g = guessCat(m.concepto);
+      m.sug = m.dup ? 'skip' : g && g.categoria !== 'Otros' ? (g.categoria === 'Impuesto' ? 'imp' : 'cat:' + g.categoria) : 'skip';
+      m.iva = g ? g.ivaPct : 21;
+    }
+  });
+  const opts = m => m.importe > 0
+    ? '<option value="skip">No registrar</option>' + facts.filter(f => C.pendiente(f) > 0.01).map(f => '<option value="cobro:' + esc(f.id) + '" ' + (m.sug === 'cobro:' + f.id ? 'selected' : '') + '>Cobro ' + esc(f.numero) + ' · ' + esc(f.datos && f.datos.nombre) + ' (' + C.eur(C.pendiente(f)) + ')</option>').join('')
+    : '<option value="skip" ' + (m.sug === 'skip' ? 'selected' : '') + '>No registrar (ya está o es personal)</option><option value="imp" ' + (m.sug === 'imp' ? 'selected' : '') + '>Impuesto pagado (303/130…)</option>' + cats.map(c => '<option value="cat:' + esc(c) + '" ' + (m.sug === 'cat:' + c ? 'selected' : '') + '>Gasto · ' + esc(c) + '</option>').join('');
+  const nNew = movs.filter(m => m.sug !== 'skip').length;
+  sheet('Extracto del banco · ' + movs.length + ' movimientos', '<p class="small muted">Te propongo qué es cada movimiento. Cambia lo que no cuadre y pulsa guardar. Los que ya estaban registrados salen marcados como «No registrar».</p>' +
+    '<div class="list" style="margin-top:8px">' + movs.map(m => '<div class="bk-row ' + (m.dup ? 'done' : '') + '" data-bk="' + m.i + '"><span class="tiny muted">' + C.dShort(m.fecha) + '</span><span class="small ellipsis" title="' + esc(m.concepto) + '">' + esc(m.concepto || '—') + (m.dup ? ' <span class="chip ok">Ya registrado</span>' : '') + '</span><span class="amt ' + (m.importe < 0 ? 'neg' : 'pos') + '">' + C.eur(m.importe) + '</span><select class="in">' + opts(m) + '</select></div>').join('') + '</div>' +
+    '<div class="actions"><button class="btn green" id="bksv">' + icon('check') + 'Guardar (' + nNew + ')</button></div>', (el, close) => {
+    const count = () => { const n = $$('[data-bk] select', el).filter(s => s.value !== 'skip').length; $('#bksv', el).innerHTML = icon('check') + 'Guardar (' + n + ')'; };
+    $$('[data-bk] select', el).forEach(s => s.onchange = count);
+    $('#bksv', el).onclick = async () => {
+      const gastos = [], cobros = [];
+      $$('[data-bk]', el).forEach(row => {
+        const m = movs.find(x => x.i === Number(row.dataset.bk)), v = $('select', row).value;
+        if (v === 'skip') return;
+        if (v.indexOf('cobro:') === 0) cobros.push({ id: v.slice(6), importe: Math.abs(m.importe), fecha: m.fecha });
+        else if (v === 'imp') gastos.push({ fecha: m.fecha, tipo: 'Impuesto', categoria: /130/.test(m.concepto) ? 'Modelo 130' : /303/.test(m.concepto) ? 'Modelo 303' : 'Impuesto', concepto: m.concepto, total: Math.abs(m.importe), ivaPct: 0, deducible: 'No', ivaDed: 0, ref: 'banco:' + m.fecha + ':' + m.importe });
+        else { const cat = v.slice(4), z = ['Seguros', 'Seguridad Social', 'Comisiones bancarias'].indexOf(cat) >= 0; gastos.push({ fecha: m.fecha, tipo: 'Gasto', categoria: cat, concepto: m.concepto, total: Math.abs(m.importe), ivaPct: z ? 0 : (m.iva == null ? 21 : m.iva), deducible: z ? 'Sí' : 'Pendiente', ivaDed: 100, notas: z ? '' : 'Desde el extracto: revisa el IVA con la factura.', ref: 'banco:' + m.fecha + ':' + m.importe }); }
+      });
+      if (!gastos.length && !cobros.length) return close();
+      let r; if (await command(async () => { r = await api('accBatch', { gastos: gastos, cobros: cobros }, 90000); await loadCrm(true); }, 'Guardado')) { close(); toast(r.gastos + ' gastos y ' + r.cobros + ' cobros registrados'); render(); }
     };
   });
 }
