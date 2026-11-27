@@ -10,9 +10,9 @@
 
 const APP = {
   nombre: 'Efecto Mariposa · Operaciones',
-  version: '3.6.0',
+  version: '3.7.0',
   appUrl: 'https://efectomariposaclean-create.github.io/em-operaciones/',
-  diasEnlace: 15,          // días que el enlace del particular sigue activo tras la entrega
+  diasEnlace: 30,          // días que el enlace del particular sigue activo tras la entrega
   zona: 'Europe/Madrid',
   diasArchivo: 60,        // servicios entregados hace más de X días pasan al histórico
   diasJornadasArchivo: 120,
@@ -38,10 +38,10 @@ const TIPOS_INCIDENCIA = ['Suciedad extraordinaria', 'Daño o avería', 'Zona in
 
 const SCHEMA = {
   Clientes:   ['id', 'nombre', 'tipo', 'protocolo', 'tipos', 'contacto', 'telefono', 'email', 'revisor', 'carpeta', 'activo', 'creado', 'avisos', 'nif', 'direccion', 'ritmo', 'ultimo', 'crm', 'tarifa'],
-  Usuarios:   ['id', 'nombre', 'rol', 'pin', 'acceso', 'horas', 'activo', 'tokenV', 'empresa', 'creado', 'email', 'telefono', 'baja'],
+  Usuarios:   ['id', 'nombre', 'rol', 'pin', 'acceso', 'horas', 'activo', 'tokenV', 'empresa', 'creado', 'email', 'telefono', 'baja', 'permiso'],
   Servicios:  ['id', 'cliente', 'matricula', 'chasis', 'marca', 'modelo', 'vehiculo', 'tipo', 'estado', 'suciedad', 'alcance', 'exterior', 'extras', 'grupos', 'notas', 'fases', 'maquina', 'recibo', 'creadoPor', 'creado', 'actualizado', 'cerrado', 'archivado', 'carpeta', 'version', 'enlace', 'listo', 'avisos'],
   Tiempos:    ['id', 'servicio', 'usuario', 'tipo', 'inicio', 'fin', 'motivo'],
-  Incidencias:['id', 'servicio', 'tipo', 'texto', 'bloqueante', 'por', 'fecha', 'resuelta', 'visible'],
+  Incidencias:['id', 'servicio', 'tipo', 'texto', 'bloqueante', 'por', 'fecha', 'resuelta', 'visible', 'respuestas', 'revisada'],
   Fotos:      ['id', 'servicio', 'incidencia', 'tipo', 'visible', 'archivo', 'mini', 'por', 'fecha'],
   Jornadas:   ['id', 'usuario', 'dia', 'inicio', 'fin', 'descansos', 'geo', 'auditoria'],
   Albaranes:  ['id', 'cliente', 'desde', 'hasta', 'n', 'fecha', 'archivo', 'titulo', 'servicios', 'por', 'conformidad'],
@@ -55,12 +55,14 @@ const SCHEMA = {
   Facturas:   ['id', 'numero', 'fecha', 'cliente', 'datos', 'lineas', 'imponible', 'ivaPct', 'iva', 'retPct', 'ret', 'total', 'estado', 'cobros', 'vence', 'archivo', 'notas', 'servicios', 'origen', 'por', 'creado', 'anticipo'],
   Presupuestos:['id', 'numero', 'fecha', 'contacto', 'cliente', 'datos', 'lineas', 'imponible', 'ivaPct', 'iva', 'total', 'validez', 'estado', 'archivo', 'notas', 'por', 'creado'],
   Cuentas:    ['id', 'email', 'nombre', 'telefono', 'hash', 'sal', 'tipo', 'cliente', 'contacto', 'rol', 'ofertas', 'bienvenida', 'tokenV', 'activo', 'creado', 'ultimo'],
+  Monedero:   ['id', 'tipo', 'cliente', 'cuenta', 'nombre', 'codigo', 'visitas', 'usadas', 'saldo', 'inicial', 'caduca', 'para', 'de', 'email', 'notas', 'movs', 'creado', 'activo'],
+  Ofertas:    ['id', 'titulo', 'texto', 'pct', 'hasta', 'activa', 'enviada', 'n', 'creado'],
   Solicitudes:['id', 'numero', 'fecha', 'cuenta', 'contacto', 'cliente', 'nombre', 'telefono', 'email', 'sel', 'vehiculo', 'resumen', 'lineas', 'manual', 'descuento', 'total', 'estado', 'fotos', 'chat', 'dia', 'propuesto', 'token', 'revisado', 'notas', 'carpeta', 'ofertas', 'evento', 'actualizado'],
   Contabilidad:['id', 'fecha', 'tipo', 'categoria', 'concepto', 'proveedor', 'imponible', 'ivaPct', 'iva', 'total', 'deducible', 'ivaDed', 'metodo', 'justificante', 'notas', 'origen', 'ref', 'por', 'creado']
 };
 const NOCACHE = { Articulos: 1, Movimientos: 1, Cargas: 1, Ubicaciones: 1 };
-const JSON_COLS = { tipos: 1, acceso: 1, extras: 1, grupos: 1, notas: 1, fases: 1, maquina: 1, recibo: 1, archivado: 1, resuelta: 1, descansos: 1, geo: 1, auditoria: 1, servicios: 1, antes: 1, despues: 1, avisos: 1, conformidad: 1, base: 1, segun: 1, no: 1, crm: 1, tarifa: 1, lineas: 1, cobros: 1, datos: 1, anticipo: 1, sel: 1, descuento: 1, fotos: 1, chat: 1 };
-const SCHEMA_V = '8';
+const JSON_COLS = { tipos: 1, acceso: 1, extras: 1, grupos: 1, notas: 1, fases: 1, maquina: 1, recibo: 1, archivado: 1, resuelta: 1, descansos: 1, geo: 1, auditoria: 1, servicios: 1, antes: 1, despues: 1, avisos: 1, conformidad: 1, base: 1, segun: 1, no: 1, crm: 1, tarifa: 1, lineas: 1, cobros: 1, datos: 1, anticipo: 1, sel: 1, descuento: 1, fotos: 1, chat: 1, respuestas: 1, movs: 1 };
+const SCHEMA_V = '9';
 const ARCHIVABLES = ['Servicios', 'Tiempos', 'Incidencias', 'Fotos', 'Jornadas', 'Cambios', 'Actividad'];
 
 /* ------------------------------------------------------------------ */
@@ -204,6 +206,7 @@ function migrate_() {
     });
     if (!props_().getProperty('INV_SEEDED') && sheet_('Articulos').getLastRow() < 2) seedInventario_();
     if (typeof crmMigrate_ === 'function') crmMigrate_();
+    if (typeof portalMigrate_ === 'function') portalMigrate_();
     props_().setProperty('SCHEMA_V', SCHEMA_V);
     if (_ver) _ver.SCHEMA_V = SCHEMA_V;
   } finally { l.releaseLock(); }
@@ -419,7 +422,7 @@ function sync_(d, u) {
     config: { extras: EXTRAS, tiposGeneral: TIPOS_GENERAL, tiposFoto: TIPOS_FOTO, tiposIncidencia: TIPOS_INCIDENCIA, vehiculos: VEHICULOS, version: APP.version },
     clients: visibleClients.map(c => ({ id: c.id, nombre: c.nombre, tipo: c.tipo, protocolo: c.protocolo, tipos: c.tipos || TIPOS_GENERAL, revisor: c.revisor, contacto: u.rol === 'admin' ? c.contacto : '', telefono: u.rol === 'admin' ? c.telefono : '', email: u.rol === 'admin' ? c.email : '', avisos: c.avisos !== false, activo: c.activo !== false })),
     team: users.filter(x => x.activo || u.rol === 'admin').map(publicUser_),
-    users: u.rol === 'admin' ? users.map(x => ({ id: x.id, nombre: x.nombre, rol: x.rol, acceso: x.acceso || [], horas: Number(x.horas) || 0, activo: !!x.activo, empresa: x.empresa || '', baja: x.baja || '' })) : [],
+    users: u.rol === 'admin' ? users.map(x => ({ id: x.id, nombre: x.nombre, rol: x.rol, acceso: x.acceso || [], horas: Number(x.horas) || 0, activo: !!x.activo, empresa: x.empresa || '', baja: x.baja || '', permiso: x.permiso || '' })) : [],
     services: services,
     times: times.filter(t => ids[t.servicio]),
     incidents: read_('Incidencias').filter(i => ids[i.servicio]).map(i => { i.visible = i.visible !== false; return i; }),
@@ -454,7 +457,7 @@ function clientService_(s, incidents) {
     recibo: r ? { numero: r.numero, signer: r.signer, role: r.role, conformity: r.conformity, observations: r.observations, at: r.at, firma: r.firma } : null
   };
 }
-function clientIncident_(i) { return { id: i.id, servicio: i.servicio, tipo: i.tipo, texto: i.texto, bloqueante: !!i.bloqueante, fecha: i.fecha, resuelta: i.resuelta ? { text: i.resuelta.text, at: i.resuelta.at } : null }; }
+function clientIncident_(i) { return { id: i.id, servicio: i.servicio, tipo: i.tipo, texto: i.texto, bloqueante: !!i.bloqueante, fecha: i.fecha, resuelta: i.resuelta ? { text: i.resuelta.text, at: i.resuelta.at } : null, respuestas: (i.respuestas || []).map(r => ({ at: r.at, de: r.de, texto: r.texto })), revisada: i.revisada || '' }; }
 function clientPhoto_(f) { return { id: f.id, servicio: f.servicio, incidencia: f.incidencia, tipo: f.tipo, fecha: f.fecha, visible: true }; }
 
 function clientSync_(u) {
@@ -467,7 +470,7 @@ function clientSync_(u) {
   raw.forEach(s => sid[s.id] = 1);
   const inc = read_('Incidencias').filter(i => sid[i.servicio] && i.visible !== false);
   return {
-    me: { id: u.id, nombre: u.nombre, rol: 'cliente', acceso: u.acceso },
+    me: { id: u.id, nombre: u.nombre, rol: 'cliente', acceso: u.acceso, permiso: typeof permiso_ === 'function' ? permiso_(u) : 'coordinador' },
     config: { version: APP.version, tiposFoto: TIPOS_FOTO, tiposIncidencia: TIPOS_INCIDENCIA, extras: [], tiposGeneral: [] },
     clients: clients.map(c => ({ id: c.id, nombre: c.nombre, tipo: c.tipo })),
     team: [], users: [], times: [],
@@ -840,7 +843,7 @@ function closeServiceTimes_(sid, at) {
   read_('Tiempos').forEach(t => { if (t.servicio === sid && !t.fin) { t.fin = at; update_('Tiempos', t); } });
 }
 
-function closeService_(s, u, x, at) {
+function closeService_(s, u, x, at, porCliente) {
   const r = x.receipt || {};
   const signer = clean_(r.signer, 120);
   if (!signer || ['Cliente', 'Responsable de empresa', 'Representante autorizado'].indexOf(r.role) < 0 || ['Conforme', 'Con observaciones'].indexOf(r.conformity) < 0 || r.accepted !== true) fail_('Completa los datos y la conformidad del albarán.');
@@ -852,7 +855,7 @@ function closeService_(s, u, x, at) {
   const pending = [];
   s.grupos.forEach(g => g.tasks.forEach(t => { if (t.state === 'pending' && t.label !== 'Albarán firmado') pending.push(g.name + ': ' + t.label); }));
   if (pending.length) fail_('Faltan ' + pending.length + ' controles: ' + pending.slice(0, 6).join('; ') + (pending.length > 6 ? '…' : ''));
-  if (read_('Tiempos').some(t => t.servicio === s.id && t.usuario !== u.id && !t.fin && t.tipo === 'Trabajo')) fail_('Otro compañero sigue trabajando en este vehículo. Debe salir antes de entregar.');
+  if (!porCliente && read_('Tiempos').some(t => t.servicio === s.id && t.usuario !== u.id && !t.fin && t.tipo === 'Trabajo')) fail_('Otro compañero sigue trabajando en este vehículo. Debe salir antes de entregar.');
   if (inc.some(i => !i.resuelta)) fail_('Registra cómo se ha resuelto o comunicado cada incidencia.');
   if (s.maquina && s.maquina.on) fail_('Detén la máquina en marcha antes de entregar.');
   const blob = Utilities.newBlob(Utilities.base64Decode(r.signature.split(',')[1]), 'image/png', 'firma-' + s.id + '.png');
@@ -1192,6 +1195,7 @@ function receiptConfirm_(d, u) {
   const r0 = read_('Albaranes').find(x => x.id === d.id);
   if (!r0 || !receiptAccess_(u, r0)) fail_('Albarán no encontrado.');
   if (r0.conformidad) fail_('Este albarán ya tiene la conformidad registrada.');
+  if (u.rol === 'cliente' && u.permiso === 'ver') fail_('Tu usuario es solo de consulta. Pide al responsable que dé la conformidad.');
   if (['Conforme', 'Con observaciones'].indexOf(d.conformity) < 0) fail_('Indica si das la conformidad.');
   const obs = clean_(d.observations, 1500);
   if (d.conformity === 'Con observaciones' && !obs) fail_('Escribe las observaciones.');
@@ -1244,6 +1248,7 @@ function saveUser_(d, u) {
       if (w.baja) fail_('Este perfil está eliminado.');
       const deactivating = w.activo && d.activo === false;
       w.nombre = nombre; w.rol = rol; w.horas = horas; w.acceso = acceso; w.empresa = clean_(d.empresa, 120);
+      w.permiso = rol === 'cliente' && ['responsable', 'coordinador', 'ver'].indexOf(d.permiso) >= 0 ? d.permiso : (rol === 'cliente' ? (w.permiso || 'coordinador') : '');
       if (typeof d.activo === 'boolean') w.activo = d.activo;
       if (deactivating) { w.tokenV = (Number(w.tokenV) || 1) + 1; const ch = closeUserTimes_(w.id, iso_(), null); refreshStatus_(ch); }
       update_('Usuarios', w);
@@ -1251,7 +1256,7 @@ function saveUser_(d, u) {
       return { id: w.id };
     }
     const pin = nuevoPin_(users);
-    const w = { id: 'u-' + uid_().slice(0, 8), nombre: nombre, rol: rol, pin: pinHash_(pin), acceso: acceso, horas: horas, activo: true, tokenV: 1, empresa: clean_(d.empresa, 120), creado: iso_() };
+    const w = { id: 'u-' + uid_().slice(0, 8), nombre: nombre, rol: rol, pin: pinHash_(pin), acceso: acceso, horas: horas, activo: true, tokenV: 1, empresa: clean_(d.empresa, 120), creado: iso_(), permiso: rol === 'cliente' ? (['responsable', 'coordinador', 'ver'].indexOf(d.permiso) >= 0 ? d.permiso : 'coordinador') : '' };
     insert_('Usuarios', w);
     log_(u, '', 'alta usuario ' + w.id);
     return { id: w.id, pin: pin, nombre: nombre };

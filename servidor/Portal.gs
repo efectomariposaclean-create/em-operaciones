@@ -179,11 +179,6 @@ function pMagic_(d) {
     return sessionOut_(a);
   });
 }
-function cMe_(d, u, req) {
-  const a = csession_(req);
-  const sols = read_('Solicitudes').filter(s => s.cuenta === a.id || s.email === a.email).sort((x, y) => String(y.fecha).localeCompare(String(x.fecha)));
-  return { cuenta: accOut_(a), solicitudes: sols.map(s => ({ t: s.token, numero: s.numero, fecha: s.fecha, resumen: s.resumen, estado: s.estado, total: s.total, dia: dd_(s.dia) })) };
-}
 function cSave_(d, u, req) {
   const a = csession_(req);
   return locked_(() => {
@@ -232,6 +227,7 @@ function pRequest_(d) {
   if (!d.privacidad) fail_('Acepta la política de privacidad para continuar.');
   const info = ['Furgoneta', 'Cabeza tractora', 'Camión', 'Autobús'].indexOf(d.info) >= 0 ? d.info : '';
   const sel = info ? { w: 2 } : (d.sel || {});
+  if (!info) sel.habitual = read_('Clientes').some(c => (norm_(tel) && norm_(c.telefono) === norm_(tel)) || emailsOf_(c).indexOf(email) >= 0);   // mantenimiento solo para clientes habituales
   const p = info ? { lineas: [{ c: 'Precio a medida · ' + info, imp: 0 }], resumen: 'Información · ' + info } : precio_(sel);
   const veh = info || (sel.tipo === 'coche' ? P_CARS[sel.v][0] : P_NAMES[sel.v]);
   return locked_(() => {
@@ -479,4 +475,319 @@ function calService_(eventId, dia, s) {
     try { ev.setColor(CalendarApp.EventColor.GREEN); } catch (e) {}
     return ev.getId();
   } catch (e) { console.error(e); return eventId || ''; }
+}
+
+/* ================================================================== */
+/* Fase 2 · Área del cliente completa                                  */
+/* Servicios, documentos, incidencias con respuesta, firma, monedero   */
+/* ================================================================== */
+
+const RET_DIAS = { particular: 30, empresa: 90 };   // días que se guardan las fotos tras la entrega
+const PERMISOS = ['responsable', 'coordinador', 'ver'];
+function permiso_(u) { return PERMISOS.indexOf(u && u.permiso) >= 0 ? u.permiso : 'coordinador'; }
+
+Object.assign(PORTAL_OPEN, { pIncReply: 1, pSign: 1, cFile: 1, cCanjear: 1 });
+Object.assign(PORTAL_ACTIONS, {
+  pIncReply: pIncReply_, pSign: pSign_, cFile: cFile_, cCanjear: cCanjear_,
+  cliIncReply: cliIncReply_, cliSign: cliSign_, cliFacturas: cliFacturas_, cliFile: cliFile_, cliPedir: cliPedir_,
+  walletList: walletList_, walletSave: walletSave_, walletUse: walletUse_, offerSave: offerSave_, offerSend: offerSend_
+});
+
+function portalMigrate_() {
+  try {
+    if (!ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'limpiarFotos')) ScriptApp.newTrigger('limpiarFotos').timeBased().everyDays(1).atHour(4).create();
+  } catch (e) { console.error('Trigger limpiarFotos: ' + e); }
+}
+
+function accClient_(a) {
+  if (a.cliente) return a.cliente;
+  const cl = read_('Clientes').find(c => c.tipo === 'particular' && ((a.telefono && norm_(c.telefono) === norm_(a.telefono)) || emailsOf_(c).indexOf(a.email) >= 0));
+  if (!cl) return '';
+  locked_(() => { const x = read_('Cuentas').find(y => y.id === a.id); if (x && !x.cliente) { x.cliente = cl.id; update_('Cuentas', x); } });
+  a.cliente = cl.id;
+  return cl.id;
+}
+function linkOk_(s) { return !s.cerrado || Date.now() <= Date.parse(linkExpires_(s)); }
+function walletOut_(m) {
+  return { id: m.id, tipo: m.tipo, nombre: m.nombre, codigo: m.tipo === 'regalo' ? m.codigo : '', visitas: Number(m.visitas) || 0, usadas: Number(m.usadas) || 0, saldo: Number(m.saldo) || 0, inicial: Number(m.inicial) || 0, caduca: dd_(m.caduca), para: m.para || '', de: m.de || '',
+    movs: (m.movs || []).slice(-10).map(x => ({ at: x.at, texto: x.texto, imp: x.imp || 0 })) };
+}
+function ofertasActivas_() {
+  const hoy = day_();
+  return read_('Ofertas').filter(o => o.activa !== false && (!o.hasta || dd_(o.hasta) >= hoy)).map(o => ({ id: o.id, titulo: o.titulo, texto: o.texto, pct: Number(o.pct) || 0, hasta: dd_(o.hasta) }));
+}
+
+// cMe_ completo: sustituye al de la fase 1
+function cMe_(d, u, req) {
+  const a = csession_(req);
+  const cid = accClient_(a);
+  const sols = read_('Solicitudes').filter(s => s.cuenta === a.id || s.email === a.email).sort((x, y) => String(y.fecha).localeCompare(String(x.fecha)));
+  const servs = cid ? read_('Servicios').filter(s => s.cliente === cid && !s.archivado).sort((x, y) => String(y.creado).localeCompare(String(x.creado))).slice(0, 60) : [];
+  const inc = cid ? read_('Incidencias').filter(i => i.visible !== false) : [];
+  const facturas = cid ? read_('Facturas').filter(f => f.cliente === cid && f.archivo && f.estado !== 'Anulada').sort((x, y) => String(y.fecha).localeCompare(String(x.fecha))) : [];
+  const wallet = read_('Monedero').filter(m => m.activo !== false && ((cid && m.cliente === cid) || m.cuenta === a.id));
+  return {
+    cuenta: accOut_(a),
+    solicitudes: sols.map(s => ({ t: s.token, numero: s.numero, fecha: s.fecha, resumen: s.resumen, estado: s.estado, total: s.total, dia: dd_(s.dia) })),
+    servicios: servs.map(s => {
+      const o = clientService_(s, inc);
+      return { id: s.id, matricula: o.matricula || o.chasis, vehiculo: [o.vehiculo, o.marca, o.modelo].filter(Boolean).join(' · '), tipo: o.tipo, etapa: o.etapa, aviso: o.aviso, creado: o.creado, cerrado: o.cerrado, albaran: o.recibo ? o.recibo.numero : '', link: linkOk_(s) && s.enlace ? linkOf_(s) : '', fotosHasta: s.cerrado ? new Date(Date.parse(s.cerrado) + RET_DIAS.particular * 864e5).toISOString() : '' };
+    }),
+    facturas: facturas.map(f => ({ id: f.id, numero: f.numero, fecha: dd_(f.fecha), total: Number(f.total) || 0, estado: f.estado })),
+    monedero: wallet.map(walletOut_),
+    ofertas: ofertasActivas_()
+  };
+}
+function pdfOut_(name, blob) { return { name: name, data: 'data:application/pdf;base64,' + Utilities.base64Encode(blob.getBytes()) }; }
+function serviceReceiptPdf_(s) {
+  const client = clientById_(read_('Clientes'), s.cliente) || { nombre: '' };
+  const r = s.recibo || {};
+  const fotos = read_('Fotos'), fs = r.firma ? fotos.find(f => f.id === r.firma) : null;
+  const data = receiptServices_(s.cliente, '2000-01-01', '2999-12-31', [s.id]);
+  if (!data.services.length) data.services = [s];
+  const conf = { conformity: r.conformity, signer: r.signer, at: r.at || s.cerrado, canal: 'Firmado en la entrega', observations: r.observations };
+  return receiptPdf_(client, day_(s.creado), day_(s.cerrado), r.numero, data, conf, fs ? dataUri_(fs.archivo) : '');
+}
+function cFile_(d, u, req) {
+  const a = csession_(req), cid = accClient_(a);
+  if (!cid) fail_('Documento no encontrado.');
+  if (d.kind === 'factura') {
+    const f = read_('Facturas').find(x => x.id === d.id && x.cliente === cid && x.archivo);
+    if (!f) fail_('Factura no encontrada.');
+    return pdfOut_('Factura ' + f.numero + '.pdf', DriveApp.getFileById(f.archivo).getBlob());
+  }
+  const s = read_('Servicios').find(x => x.id === d.id && x.cliente === cid && x.recibo);
+  if (!s) fail_('Albarán no encontrado.');
+  const pdf = serviceReceiptPdf_(s);
+  return pdfOut_('Albarán ' + s.recibo.numero + '.pdf', pdf.blob);
+}
+function cCanjear_(d, u, req) {
+  const a = csession_(req);
+  throttle_('gift:' + a.id, 8);
+  const code = String(d.codigo || '').toUpperCase().replace(/[^A-Z0-9-]/g, '');
+  return locked_(() => {
+    const m = read_('Monedero').find(x => x.tipo === 'regalo' && String(x.codigo).toUpperCase() === code && x.activo !== false);
+    if (!m) fail_('Código no válido. Revísalo o escríbenos.');
+    if (m.cuenta && m.cuenta !== a.id) fail_('Esta tarjeta ya está en otra cuenta.');
+    m.cuenta = a.id; if (!m.cliente && a.cliente) m.cliente = a.cliente;
+    m.movs = (m.movs || []).concat([{ at: iso_(), texto: 'Añadida a la cuenta de ' + a.nombre }]);
+    update_('Monedero', m);
+    return walletOut_(m);
+  });
+}
+
+/* Respuesta del cliente a una incidencia ("lo sabía", "visto"…) y marcar como revisada */
+function incReply_(s, d, who) {
+  const texto = clean_(d.texto, 600);
+  if (!texto && !d.revisada) fail_('Escribe tu respuesta.');
+  return locked_(() => {
+    const i = read_('Incidencias').find(x => x.id === d.incidencia && x.servicio === s.id && x.visible !== false);
+    if (!i) fail_('Incidencia no encontrada.');
+    i.respuestas = (i.respuestas || []).concat(texto ? [{ at: iso_(), de: who, texto: texto }] : []).slice(-30);
+    if (d.revisada && !i.revisada) i.revisada = iso_();
+    update_('Incidencias', i);
+    pmail_(ownerMail_(), 'Respuesta a incidencia · ' + (s.matricula || s.chasis), 'El cliente ha respondido', ['<b>' + esc_(who) + '</b> sobre «' + esc_(i.tipo) + '» en ' + esc_(s.matricula || s.chasis) + ':', texto ? esc_(texto) : '', i.revisada ? 'Marcada como <b>revisada</b> por el cliente.' : ''].filter(Boolean), 'Abrir el servicio', APP.appUrl + '#/servicio/' + s.id, 'Incidencia');
+    return clientIncident_(i);
+  });
+}
+function pIncReply_(d) {
+  throttle_('incr:' + clean_(d.t, 64), 30);
+  const s = publicService_(d.t);
+  const c = clientById_(read_('Clientes'), s.cliente) || {};
+  return incReply_(s, d, c.nombre || 'Cliente');
+}
+function cliIncReply_(d, u) {
+  if (u.rol !== 'cliente' || permiso_(u) === 'ver') fail_('Sin permiso.');
+  const s = loadService_(u, d.servicio);
+  return incReply_(s, d, u.nombre);
+}
+
+/* Firma del albarán desde el móvil del cliente (también en el móvil del equipo, como siempre) */
+function signByClient_(sid, d, who) {
+  const r = d.receipt || {};
+  const at = iso_();
+  return locked_(() => {
+    const s = read_('Servicios').find(x => x.id === sid);
+    if (!s || s.archivado) fail_('Servicio no encontrado.');
+    if (s.cerrado) fail_('Este servicio ya está entregado y firmado.');
+    if (etapa_(s) !== 'Listo') fail_('Todavía estamos trabajando en tu vehículo. Podrás firmar cuando esté listo.');
+    closeService_(s, { id: who.id, rol: 'cliente', nombre: who.nombre }, { receipt: r }, at, true);
+    s.actualizado = at; s.version = (Number(s.version) || 0) + 1;
+    s.recibo.canal = who.canal;
+    notify_('entregado', s);
+    update_('Servicios', s);
+    log_({ id: who.id }, s.id, 'firma del cliente (' + who.canal + ')');
+    return { ok: true, numero: s.recibo.numero };
+  });
+}
+function pSign_(d) {
+  throttle_('sign:' + clean_(d.t, 64), 10);
+  const s = publicService_(d.t);
+  return signByClient_(s.id, d, { id: 'cliente', nombre: 'Cliente', canal: 'Firmado desde el móvil del cliente' });
+}
+function cliSign_(d, u) {
+  if (u.rol !== 'cliente' || permiso_(u) === 'ver') fail_('Sin permiso.');
+  const s = loadService_(u, d.servicio);
+  return signByClient_(s.id, d, { id: u.id, nombre: u.nombre, canal: 'Firmado desde el portal de empresa' });
+}
+
+/* ================================================================== */
+/* Fase 3 · Empresas y flotas: permisos, facturas y pedir servicio     */
+/* ================================================================== */
+
+function cliFacturas_(d, u) {
+  if (u.rol !== 'cliente' || permiso_(u) !== 'responsable') fail_('Solo el responsable de la cuenta ve las facturas.');
+  const acc = u.acceso || [];
+  return read_('Facturas').filter(f => acc.indexOf(f.cliente) >= 0 && f.archivo && f.estado !== 'Anulada').sort((x, y) => String(y.fecha).localeCompare(String(x.fecha)))
+    .map(f => ({ id: f.id, numero: f.numero, fecha: dd_(f.fecha), total: Number(f.total) || 0, estado: f.estado, vence: dd_(f.vence) }));
+}
+function cliFile_(d, u) {
+  if (u.rol !== 'cliente' || permiso_(u) !== 'responsable') fail_('Sin permiso.');
+  const f = read_('Facturas').find(x => x.id === d.id && (u.acceso || []).indexOf(x.cliente) >= 0 && x.archivo);
+  if (!f) fail_('Factura no encontrada.');
+  return pdfOut_('Factura ' + f.numero + '.pdf', DriveApp.getFileById(f.archivo).getBlob());
+}
+function cliPedir_(d, u) {
+  if (u.rol !== 'cliente' || permiso_(u) === 'ver') fail_('Sin permiso.');
+  const c = clientById_(read_('Clientes'), (u.acceso || [])[0]);
+  if (!c) fail_('Cliente no encontrado.');
+  const veh = clean_(d.vehiculos, 1000), tipo = clean_(d.tipo, 80) || 'Limpieza', dia = dayOk_(d.dia);
+  if (!veh) fail_('Indica los vehículos (matrículas).');
+  const n = veh.split(/[\n,;]+/).map(x => x.trim()).filter(Boolean).length;
+  return locked_(() => {
+    const all = read_('Solicitudes'), year = new Date().getFullYear();
+    let max = 0;
+    all.forEach(s => { const m = String(s.numero || '').match(/^S(\d{4})-(\d+)$/); if (m && Number(m[1]) === year) max = Math.max(max, Number(m[2])); });
+    const s = { id: uid_(), numero: 'S' + year + '-' + ('00' + (max + 1)).slice(-3), fecha: iso_(), cuenta: '', contacto: '', cliente: c.id, nombre: c.nombre + ' · ' + u.nombre, telefono: c.telefono || '', email: emailsOf_(c)[0] || '',
+      sel: { empresa: true }, vehiculo: n + (n > 1 ? ' vehículos' : ' vehículo'), resumen: 'Empresa · ' + tipo, lineas: [{ c: tipo + ' · ' + n + (n > 1 ? ' vehículos' : ' vehículo') + ' · tarifa pactada', imp: 0 }], manual: 0, descuento: null, total: 0,
+      estado: 'Recibida', fotos: [], chat: [{ at: iso_(), de: 'cliente', texto: 'Vehículos: ' + veh + (clean_(d.notas, 600) ? '\n' + clean_(d.notas, 600) : '') }], dia: '', propuesto: dia || '', token: 't' + secret_(), revisado: '', notas: '', carpeta: '', ofertas: false, evento: '', actualizado: iso_() };
+    insert_('Solicitudes', s);
+    pmail_(ownerMail_(), 'Pedido de ' + c.nombre + ' · ' + s.numero, 'Nuevo pedido de empresa', ['<b>' + esc_(u.nombre) + '</b> (' + esc_(c.nombre) + ') pide: <b>' + esc_(tipo) + '</b>', 'Vehículos: ' + esc_(veh), dia ? 'Fecha deseada: <b>' + dia.split('-').reverse().join('/') + '</b>' : '', clean_(d.notas, 600) ? esc_(clean_(d.notas, 600)) : ''].filter(Boolean), 'Abrir la solicitud', APP.appUrl + '#/solicitud/' + s.id, 'Empresa');
+    return { numero: s.numero };
+  });
+}
+
+/* ================================================================== */
+/* Monedero (bonos y tarjetas regalo) y ofertas exclusivas             */
+/* ================================================================== */
+
+const BONOS_P = { Escapadas: [2, 7], Temporadas: [4, 10], 'Siempre a punto': [6, 12] };
+function walletList_(d, u) {
+  admin_(u);
+  const clients = read_('Clientes'), accs = read_('Cuentas');
+  return {
+    items: read_('Monedero').filter(m => m.activo !== false).map(m => Object.assign(walletOut_(m), { cliente: m.cliente, clienteNombre: (clientById_(clients, m.cliente) || {}).nombre || '', cuenta: m.cuenta, cuentaNombre: (accs.find(a => a.id === m.cuenta) || {}).nombre || '', email: m.email || '', codigo: m.codigo || '', creado: m.creado })),
+    ofertas: read_('Ofertas').map(o => ({ id: o.id, titulo: o.titulo, texto: o.texto, pct: Number(o.pct) || 0, hasta: dd_(o.hasta), activa: o.activa !== false, enviada: o.enviada || '', n: Number(o.n) || 0 })),
+    suscritos: accs.filter(a => a.ofertas && a.activo !== false).length,
+    cupo: (() => { try { return MailApp.getRemainingDailyQuota(); } catch (e) { return 0; } })()
+  };
+}
+function giftCode_() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = 'EM-'; for (let i = 0; i < 6; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
+function walletSave_(d, u) {
+  admin_(u);
+  return locked_(() => {
+    const all = read_('Monedero');
+    if (d.id) {
+      const m = all.find(x => x.id === d.id);
+      if (!m) fail_('No encontrado.');
+      if (d.activo === false) m.activo = false;
+      if (d.caduca !== undefined) m.caduca = dayOk_(d.caduca) || '';
+      if (d.notas !== undefined) m.notas = clean_(d.notas, 500);
+      update_('Monedero', m);
+      return walletOut_(m);
+    }
+    const tipo = d.tipo === 'regalo' ? 'regalo' : 'bono';
+    const m = { id: 'w-' + uid_().slice(0, 8), tipo: tipo, cliente: clean_(d.cliente, 60), cuenta: '', nombre: '', codigo: '', visitas: 0, usadas: 0, saldo: 0, inicial: 0, caduca: dayOk_(d.caduca) || '', para: clean_(d.para, 120), de: clean_(d.de, 120), email: clean_(d.email, 120).toLowerCase(), notas: clean_(d.notas, 500), movs: [], creado: iso_(), activo: true };
+    if (tipo === 'bono') {
+      if (!clientById_(read_('Clientes'), m.cliente)) fail_('Elige el cliente del bono.');
+      m.nombre = clean_(d.nombre, 60) || 'Bono';
+      m.visitas = Math.max(1, Math.min(24, Number(d.visitas) || (BONOS_P[m.nombre] || [4])[0]));
+      m.movs = [{ at: iso_(), texto: 'Bono ' + m.nombre + ' de ' + m.visitas + ' visitas' }];
+    } else {
+      const imp = money_(d.saldo);
+      if (!(imp > 0)) fail_('Indica el importe de la tarjeta.');
+      let code; do { code = giftCode_(); } while (all.some(x => x.codigo === code));
+      m.codigo = code; m.saldo = imp; m.inicial = imp; m.nombre = 'Tarjeta regalo';
+      m.movs = [{ at: iso_(), texto: 'Tarjeta regalo de ' + eurP_(imp) + (m.de ? ' · de ' + m.de : ''), imp: imp }];
+      if (m.email && mailOk_(m.email)) pmail_(m.email, '🎁 Tienes una tarjeta regalo de Efecto Mariposa', '¡Te han regalado una limpieza!', [(m.para ? 'Hola, ' + esc_(m.para) + ':' : 'Hola:'), (m.de ? esc_(m.de) + ' te regala' : 'Tienes') + ' una tarjeta de <b>' + eurP_(imp) + '</b> para la limpieza de tu autocaravana, camper, caravana o coche.', 'Tu código: <b style="font-size:20px;letter-spacing:2px">' + code + '</b>', 'Pide tu presupuesto, crea tu cuenta y añade el código en «Monedero».' + (m.caduca ? ' Válida hasta el ' + m.caduca.split('-').reverse().join('/') + '.' : '')], 'Usar mi tarjeta', clientUrl_(), 'Tarjeta regalo');
+    }
+    insert_('Monedero', m);
+    return Object.assign(walletOut_(m), { codigo: m.codigo });
+  });
+}
+/** Gastar una visita del bono o descontar saldo de la tarjeta. */
+function walletUse_(d, u) {
+  admin_(u);
+  return locked_(() => {
+    const m = read_('Monedero').find(x => x.id === d.id && x.activo !== false);
+    if (!m) fail_('No encontrado.');
+    const nota = clean_(d.nota, 200);
+    if (m.tipo === 'bono') {
+      if (Number(m.usadas) >= Number(m.visitas)) fail_('El bono ya no tiene visitas.');
+      m.usadas = Number(m.usadas || 0) + 1;
+      m.movs = (m.movs || []).concat([{ at: iso_(), texto: 'Visita ' + m.usadas + ' de ' + m.visitas + (nota ? ' · ' + nota : '') }]);
+    } else {
+      const imp = money_(d.importe);
+      if (!(imp > 0) || imp > Number(m.saldo) + 0.001) fail_('Importe no válido (saldo ' + eurP_(Number(m.saldo)) + ').');
+      m.saldo = r2_(Number(m.saldo) - imp);
+      m.movs = (m.movs || []).concat([{ at: iso_(), texto: 'Usado en servicio' + (nota ? ' · ' + nota : ''), imp: -imp }]);
+    }
+    update_('Monedero', m);
+    return walletOut_(m);
+  });
+}
+function offerSave_(d, u) {
+  admin_(u);
+  return locked_(() => {
+    const all = read_('Ofertas');
+    let o = d.id ? all.find(x => x.id === d.id) : null;
+    const titulo = clean_(d.titulo, 120);
+    if (!titulo) fail_('Pon un título a la oferta.');
+    const v = { titulo: titulo, texto: clean_(d.texto, 1000), pct: Math.max(0, Math.min(50, Number(d.pct) || 0)), hasta: dayOk_(d.hasta) || '', activa: d.activa !== false };
+    if (o) { Object.assign(o, v); update_('Ofertas', o); }
+    else { o = Object.assign({ id: 'o-' + uid_().slice(0, 8), enviada: '', n: 0, creado: iso_() }, v); insert_('Ofertas', o); }
+    return { id: o.id };
+  });
+}
+/** Envía la oferta por correo solo a quien aceptó recibir ofertas (y respeta el cupo diario de Gmail). */
+function offerSend_(d, u) {
+  admin_(u);
+  const o = read_('Ofertas').find(x => x.id === d.id);
+  if (!o) fail_('Oferta no encontrada.');
+  const to = read_('Cuentas').filter(a => a.ofertas && a.activo !== false && mailOk_(a.email));
+  let cupo = 0; try { cupo = MailApp.getRemainingDailyQuota(); } catch (e) {}
+  const lote = to.slice(0, Math.max(0, cupo - 5));
+  lote.forEach(a => pmail_(a.email, '⭐ ' + o.titulo, esc_(o.titulo), ['Hola, ' + esc_(String(a.nombre).split(' ')[0]) + ':', esc_(o.texto || '').replace(/\n/g, '<br>'), o.pct ? 'Descuento exclusivo: <b>−' + o.pct + ' %</b> (no acumulable).' : '', o.hasta ? 'Válida hasta el <b>' + dd_(o.hasta).split('-').reverse().join('/') + '</b>.' : '', '<span style="font-size:12px;color:#8a9ba4">Recibes este correo porque aceptaste recibir ofertas para clientes. Puedes darte de baja en «Mi cuenta».</span>'].filter(Boolean), 'Reservar con la oferta', clientUrl_(), 'Solo para clientes'));
+  locked_(() => { const x = read_('Ofertas').find(y => y.id === o.id); x.enviada = iso_(); x.n = (Number(x.n) || 0) + lote.length; update_('Ofertas', x); });
+  return { enviados: lote.length, pendientes: to.length - lote.length };
+}
+
+/* ================================================================== */
+/* Borrado automático de fotos (se ejecuta solo cada noche)            */
+/* Particulares 30 días, empresas 3 meses. Queda el registro, la firma, */
+/* el albarán y la factura. Las fotos van a la papelera de Drive.      */
+/* ================================================================== */
+
+function limpiarFotos() {
+  const now = Date.now(), clients = read_('Clientes'), byId = {};
+  clients.forEach(c => byId[c.id] = c);
+  const old = {};
+  read_('Servicios').forEach(s => {
+    if (!s.cerrado) return;
+    const dias = byId[s.cliente] && byId[s.cliente].tipo === 'empresa' ? RET_DIAS.empresa : RET_DIAS.particular;
+    if (now - Date.parse(s.cerrado) > dias * 864e5) old[s.id] = 1;
+  });
+  let n = 0;
+  const trash = id => { if (!id) return; try { DriveApp.getFileById(id).setTrashed(true); } catch (e) {} };
+  read_('Fotos').filter(f => old[f.servicio] && f.tipo !== 'Firma' && f.archivo).slice(0, 250).forEach(f => {
+    trash(f.archivo); trash(f.mini);
+    locked_(() => { const x = read_('Fotos').find(y => y.id === f.id); if (x) { x.archivo = ''; x.mini = ''; x.visible = false; update_('Fotos', x); } });
+    n++;
+  });
+  read_('Solicitudes').filter(s => ['Hecha', 'Rechazada', 'Cancelada'].indexOf(s.estado) >= 0 && (s.fotos || []).length && now - Date.parse(s.actualizado || s.fecha) > RET_DIAS.particular * 864e5).slice(0, 40).forEach(s => {
+    (s.fotos || []).forEach(f => { trash(f.archivo); trash(f.mini); n++; });
+    locked_(() => { const x = read_('Solicitudes').find(y => y.id === s.id); x.fotos = []; x.chat = (x.chat || []).concat([{ at: iso_(), de: 'sistema', texto: 'Fotos borradas automáticamente (' + RET_DIAS.particular + ' días).' }]); update_('Solicitudes', x); });
+  });
+  console.log('Fotos borradas: ' + n);
+  return n;
 }

@@ -9,7 +9,7 @@ const $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
 const eur = n => (Math.round(n * 100) / 100).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' €';
 const LS = { get: (k, d) => { try { const v = localStorage.getItem('emc:' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set: (k, v) => { try { localStorage.setItem('emc:' + k, JSON.stringify(v)); } catch (e) {} }, del: k => { try { localStorage.removeItem('emc:' + k); } catch (e) {} } };
 const device = LS.get('device') || (() => { const d = 'c' + Math.random().toString(36).slice(2) + Date.now().toString(36); LS.set('device', d); return d; })();
-const S = { token: LS.get('token', ''), cuenta: LS.get('cuenta', null), q: LS.get('q', null) };
+const S = { token: LS.get('token', ''), cuenta: LS.get('cuenta', null), q: LS.get('q', null), me: null };
 const LOGO = 'icons/logo-header.png';
 
 async function api(action, data) {
@@ -21,7 +21,7 @@ async function api(action, data) {
 }
 function toast(m, err) { const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 3200); }
 function setSession(r) { S.token = r.token; S.cuenta = r.cuenta; LS.set('token', r.token); LS.set('cuenta', r.cuenta); }
-function logout(silent) { S.token = ''; S.cuenta = null; LS.del('token'); LS.del('cuenta'); if (!silent) go(''); }
+function logout(silent) { S.me = null; S.token = ''; S.cuenta = null; LS.del('token'); LS.del('cuenta'); if (!silent) go(''); }
 function go(h) { if (location.hash === '#' + h || (!h && !location.hash)) route(); else location.hash = h; }
 function top(title, sub, back) { return '<div class="top">' + (back != null ? '<a class="ib" href="#' + back + '" aria-label="Volver">‹</a>' : '<img src="' + LOGO + '" alt="Efecto Mariposa">') + '<div class="tt"><small>' + esc(sub || '') + '</small><b>' + esc(title) + '</b></div>' + (S.token && back == null ? '<a class="ib" href="#area" aria-label="Mi área">👤</a>' : '') + '</div>'; }
 function busy(btn, on, txt) { if (!btn) return; if (on) { btn._t = btn.innerHTML; btn.disabled = true; btn.innerHTML = txt || 'Un momento…'; } else { btn.disabled = false; btn.innerHTML = btn._t; } }
@@ -37,6 +37,7 @@ const CEXT = [['tap','Tapicería completa',96.80],['mal','Maletero profundo',24.
 const MIN_BIEN = 150;
 const OTHER = ['Furgoneta','Cabeza tractora','Camión','Autobús'];
 
+function habitual() { return !!(S.token && S.cuenta && S.cuenta.bienvenida === false); }
 function defQ() { return { tipo: 'auto', v: 5, a: 0, st: 0, s: 1, ex: 0, seat: 0, bed: 0, xt: [], w: 2, rec: false, sm: false, cv: 1, cs: 1, seats: 0, cx: [] }; }
 function calc(q) {
   let t = 0;
@@ -44,7 +45,7 @@ function calc(q) {
     t = CARS[q.cv][1][q.cs] + (q.cx.indexOf('tap') >= 0 ? 0 : q.seats * 24.20) + CEXT.reduce((s, x) => s + (q.cx.indexOf(x[0]) >= 0 ? x[2] : 0), 0);
   } else {
     const r = RATES[q.v], inten = q.s === 2;
-    t = r[q.s] * (1 + q.a / 100) + (q.ex ? r[q.ex + 2] : 0) + (inten ? 0 : q.seat) + q.bed + q.xt.reduce((s, k) => s + (inten && k === 39 ? 0 : k), 0);
+    t = r[q.s] * (q.s ? 1 + q.a / 100 : 1) + (q.ex ? r[q.ex + 2] : 0) + (inten ? 0 : q.seat) + q.bed + q.xt.reduce((s, k) => s + (inten && k === 39 ? 0 : k), 0);
     if (q.w === 1) t *= 1.1;
   }
   t = Math.round(t * 100) / 100;
@@ -94,7 +95,7 @@ function viewQuote() {
       h += '<div class="h">Tu vehículo</div><div class="chips">' + NAMES.map((n, i) => chip('v', i, n, '', q.v === i)).join('') + '</div>';
       h += '<div class="h">Antigüedad</div><div class="chips">' + [[0, 'Hasta 5 años'], [10, 'De 5 a 10'], [25, 'Más de 10']].map(x => chip('a', x[0], x[1], '', q.a === x[0])).join('') + '</div>';
       h += '<div class="h">¿Cómo está por dentro?<small>Sé sincero: lo comprobamos con tus fotos y así no hay sorpresas.</small></div><div class="chips">' + ['Habitual', 'Suciedad acumulada', 'Recuperación'].map((n, i) => chip('st', i, n, '', q.st === i)).join('') + '</div>';
-      h += '<div class="h">Limpieza interior</div>' + opt('s', 0, 'Mantenimiento', 'Para clientes habituales, tras tu primera limpieza', eur(r[0]), q.s === 0, true) +
+      h += '<div class="h">Limpieza interior</div>' + opt('s', 0, 'Mantenimiento', habitual() ? 'Para mantenerla al día entre limpiezas' : 'Para clientes habituales, tras tu primera limpieza', eur(r[0]), q.s === 0, !habitual() || q.st !== 0) +
         opt('s', 1, 'Estándar', 'Salón, cocina, baño, suelos y cristales', eur(r[1] * (1 + q.a / 100)), q.s === 1) +
         opt('s', 2, 'Intensiva', 'A fondo · incluye tapicerías y frigorífico', eur(r[2] * (1 + q.a / 100)), q.s === 2);
       h += '<div class="h">Exterior</div><div class="chips">' + [[0, 'Sin exterior', ''], [1, 'Básico', eur(r[3])], [2, 'Intensivo', eur(r[4])]].map(x => chip('ex', x[0], x[1], x[2], q.ex === x[0])).join('') + '</div>';
@@ -271,24 +272,49 @@ async function viewMagic(m) {
   try { setSession(await api('pMagic', { m: m })); history.replaceState(null, '', location.pathname + '#area'); toast('Has entrado. Puedes poner una contraseña nueva en «Mi cuenta».'); route(); }
   catch (e) { viewError(e.message); }
 }
-async function viewArea() {
+async function viewArea(tab) {
   if (!S.token) return go('entrar');
-  APP.innerHTML = top('Mi área', 'Efecto Mariposa', null) + '<div class="spin"></div>';
-  let me; try { me = await api('cMe', {}); } catch (e) { return viewError(e.message); }
+  tab = tab || LS.get('tab', 'inicio'); LS.set('tab', tab);
+  if (!S.me) APP.innerHTML = top('Mi área', 'Efecto Mariposa', null) + '<div class="spin"></div>';
+  try { S.me = await api('cMe', {}); } catch (e) { if (!S.me) return viewError(e.message); }
+  const me = S.me;
   S.cuenta = me.cuenta; LS.set('cuenta', me.cuenta);
-  const chip = e => '<span class="st ' + (e === 'Hecha' || e === 'Programada' ? 'ok' : /Rechaz|Cancel/.test(e) ? 'bad' : '') + '">' + esc(e) + '</span>';
-  APP.innerHTML = top('Hola, ' + me.cuenta.nombre.split(' ')[0], 'Mi área', null) + '<div class="pad">' +
-    '<a class="btn" href="#nuevo">Pedir presupuesto</a>' +
-    (me.cuenta.bienvenida ? '<p class="note">Tienes un <b>−10 %</b> en tu primer servicio (desde 150 €).</p>' : '') +
-    '<div class="card"><b style="color:var(--navy)">Mis solicitudes</b>' + (me.solicitudes.length ? me.solicitudes.map(s => '<a class="li" href="#s=' + esc(s.t) + '"><div class="g"><b>' + esc(s.resumen) + '</b><span>' + esc(s.numero) + ' · ' + new Date(s.fecha).toLocaleDateString('es-ES') + (s.dia ? ' · día ' + fday(s.dia) : '') + ' · ' + eur(s.total) + '</span></div>' + chip(s.estado) + '</a>').join('') : '<p class="small muted" style="margin-top:6px">Aún no tienes solicitudes.</p>') + '</div>' +
-    '<div class="card"><b style="color:var(--navy)">Muy pronto aquí</b><p class="small muted" style="margin-top:4px">El seguimiento en directo de tu vehículo, tus fotos, albaranes y facturas, y tu monedero con bonos y tarjetas regalo.</p></div>' +
-    '<div class="card" style="display:flex;flex-direction:column;gap:10px"><b style="color:var(--navy)">Mi cuenta</b><div class="small muted">' + esc(me.cuenta.email) + '</div>' +
-    '<label class="ck"><input type="checkbox" id="of"' + (me.cuenta.ofertas ? ' checked' : '') + '> <span>Recibir ofertas exclusivas por correo</span></label>' +
-    '<details><summary>Cambiar contraseña</summary><label class="f" style="margin-top:8px">Actual<input class="in" type="password" id="pa"></label><label class="f" style="margin-top:8px">Nueva<input class="in" type="password" id="pn" autocomplete="new-password"></label><button class="btn sm" id="pwb" style="margin-top:8px">Guardar</button></details>' +
-    '<button class="btn ghost" id="out">Cerrar sesión</button></div></div>';
-  $('#of').onchange = async e => { try { await api('cSave', { ofertas: e.target.checked }); toast('Guardado'); } catch (x) { toast(x.message, true); } };
-  $('#pwb').onclick = async () => { try { await api('cSave', { actual: $('#pa').value, password: $('#pn').value }); toast('Contraseña cambiada'); } catch (x) { toast(x.message, true); } };
-  $('#out').onclick = () => logout();
+  const chip = e => '<span class="st ' + (e === 'Hecha' || e === 'Programada' || e === 'Entregado' || e === 'Listo' ? 'ok' : /Rechaz|Cancel/.test(e) ? 'bad' : '') + '">' + esc(e) + '</span>';
+  const fd = d => d ? new Date(d.length === 10 ? d + 'T12:00:00Z' : d).toLocaleDateString('es-ES') : '';
+  const TABS = [['inicio', 'Inicio'], ['docs', 'Documentos'], ['monedero', 'Monedero'], ['cuenta', 'Cuenta']];
+  let h = '';
+  if (tab === 'inicio') {
+    const act = me.servicios.filter(x => !x.cerrado);
+    h = '<a class="btn" href="#nuevo">Pedir presupuesto</a>' +
+      (me.cuenta.bienvenida ? '<p class="note">Tienes un <b>−10 %</b> en tu primer servicio (desde 150 €).</p>' : '') +
+      me.ofertas.map(o => '<div class="promo" style="background:linear-gradient(135deg,#ac812e,#c99a3f)"><h3>' + esc(o.titulo) + (o.pct ? ' · −' + o.pct + ' %' : '') + '</h3><p style="color:#fff;opacity:.92">' + esc(o.texto) + (o.hasta ? ' Hasta el ' + fd(o.hasta) + '.' : '') + ' No acumulable.</p><a class="btn sm ghost" href="#nuevo">Reservar con la oferta</a></div>').join('') +
+      (act.length ? '<div class="card"><b style="color:var(--navy)">Ahora mismo</b>' + act.map(x => '<a class="li" href="' + esc(x.link) + '"><div class="g"><b>' + esc(x.matricula + ' · ' + x.tipo) + '</b><span>' + esc(x.vehiculo) + (x.aviso ? ' · ⚠️ tienes un aviso' : '') + '</span></div>' + chip(x.etapa === 'Listo' ? 'Listo' : x.etapa) + '</a>').join('') + '<p class="small muted" style="margin-top:6px">Toca para ver el seguimiento en directo, las fotos y firmar el albarán.</p></div>' : '') +
+      '<div class="card"><b style="color:var(--navy)">Mis solicitudes</b>' + (me.solicitudes.length ? me.solicitudes.map(x => '<a class="li" href="#s=' + esc(x.t) + '"><div class="g"><b>' + esc(x.resumen) + '</b><span>' + esc(x.numero) + ' · ' + fd(x.fecha) + (x.dia ? ' · día ' + fday(x.dia) : '') + (x.total ? ' · ' + eur(x.total) : '') + '</span></div>' + chip(x.estado) + '</a>').join('') : '<p class="small muted" style="margin-top:6px">Aún no tienes solicitudes.</p>') + '</div>' +
+      '<div class="card"><b style="color:var(--navy)">Historial de servicios</b>' + (me.servicios.filter(x => x.cerrado).length ? me.servicios.filter(x => x.cerrado).map(x => '<' + (x.link ? 'a href="' + esc(x.link) + '"' : 'div') + ' class="li"><div class="g"><b>' + esc(fd(x.cerrado) + ' · ' + x.tipo) + '</b><span>' + esc(x.matricula + ' · ' + x.vehiculo) + (x.albaran ? ' · albarán ' + x.albaran : '') + (x.link ? ' · fotos hasta el ' + fd(x.fotosHasta) : '') + '</span></div>' + chip('Entregado') + '</' + (x.link ? 'a' : 'div') + '>').join('') : '<p class="small muted" style="margin-top:6px">Aquí verás cada servicio con sus fotos (30 días) y su albarán.</p>') + '</div>';
+  } else if (tab === 'docs') {
+    const alb = me.servicios.filter(x => x.albaran);
+    h = '<div class="card"><b style="color:var(--navy)">Facturas</b>' + (me.facturas.length ? me.facturas.map(f => '<div class="li" data-file="factura" data-id="' + esc(f.id) + '"><div class="g"><b>Factura ' + esc(f.numero) + '</b><span>' + fd(f.fecha) + ' · ' + eur(f.total) + '</span></div>' + '<span class="st ' + (/Pagad|Cobrad/.test(f.estado) ? 'ok' : '') + '">' + esc(f.estado) + '</span>' + '<span class="ib" style="width:34px;height:34px">⬇</span></div>').join('') : '<p class="small muted" style="margin-top:6px">Aún no tienes facturas.</p>') + '</div>' +
+      '<div class="card"><b style="color:var(--navy)">Albaranes de entrega</b>' + (alb.length ? alb.map(x => '<div class="li" data-file="albaran" data-id="' + esc(x.id) + '"><div class="g"><b>Albarán ' + esc(x.albaran) + '</b><span>' + fd(x.cerrado) + ' · ' + esc(x.matricula) + '</span></div><span class="ib" style="width:34px;height:34px">⬇</span></div>').join('') : '<p class="small muted" style="margin-top:6px">Aquí tendrás el albarán firmado de cada servicio.</p>') + '</div>' +
+      '<p class="small muted center">Las fotos de cada servicio se guardan 30 días. El servicio, el albarán y la factura quedan siempre aquí.</p>';
+  } else if (tab === 'monedero') {
+    const bonos = me.monedero.filter(m => m.tipo === 'bono'), gifts = me.monedero.filter(m => m.tipo === 'regalo');
+    h = bonos.map(m => '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><div><span class="small muted">MI BONO</span><div style="font-weight:700;color:var(--navy);font-size:15px">' + esc(m.nombre) + ' · ' + m.visitas + ' visitas</div></div><span class="st ok">Quedan ' + (m.visitas - m.usadas) + '</span></div><div style="display:flex;gap:6px;margin-top:10px">' + Array.from({ length: m.visitas }, (_, i) => '<div style="flex:1;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:' + (i < m.usadas ? 'var(--green);color:#fff' : '#eef2f4;color:#5b7079') + '">' + (i < m.usadas ? '✓' : i + 1) + '</div>').join('') + '</div>' + (m.caduca ? '<p class="small muted" style="margin-top:6px">Válido hasta el ' + fd(m.caduca) + '</p>' : '') + '</div>').join('') +
+      gifts.map(m => '<div class="promo"><h3>Tarjeta regalo · ' + eur(m.saldo) + '</h3><p>' + esc(m.codigo) + (m.de ? ' · de ' + esc(m.de) : '') + (m.caduca ? ' · hasta el ' + fd(m.caduca) : '') + '<br>Dínoslo al pedir tu servicio y lo descontamos.</p></div>').join('') +
+      '<div class="card"><b style="color:var(--navy)">¿Tienes una tarjeta regalo?</b><div style="display:flex;gap:8px;margin-top:8px"><input class="in" id="gc" placeholder="EM-XXXXXX" style="margin:0;text-transform:uppercase"><button class="btn sm" id="gcb">Añadir</button></div></div>' +
+      '<div class="card"><b style="color:var(--navy)">Bonos</b><p class="small muted" style="margin:4px 0 6px">Varias limpiezas al año con descuento. Pagas el 50 % al contratar y el resto por visita.</p>' + [['Escapadas', '2 visitas', '−7 %'], ['Temporadas', '4 visitas', '−10 %'], ['Siempre a punto', '6 visitas', '−12 %']].map(b => '<div class="li"><div class="g"><b>' + b[0] + '</b><span>' + b[1] + '</span></div><span class="st ok">' + b[2] + '</span></div>').join('') + '<a class="btn ghost" style="margin-top:8px" href="#nuevo">Pide presupuesto y dinos que quieres bono</a></div>';
+  } else {
+    h = '<div class="card" style="display:flex;flex-direction:column;gap:10px"><b style="color:var(--navy)">' + esc(me.cuenta.nombre) + '</b><div class="small muted">' + esc(me.cuenta.email) + ' · ' + esc(me.cuenta.telefono || '') + '</div>' +
+      '<label class="ck"><input type="checkbox" id="of"' + (me.cuenta.ofertas ? ' checked' : '') + '> <span>Recibir ofertas exclusivas por correo</span></label>' +
+      '<details><summary>Cambiar contraseña</summary><label class="f" style="margin-top:8px">Actual<input class="in" type="password" id="pa"></label><label class="f" style="margin-top:8px">Nueva<input class="in" type="password" id="pn" autocomplete="new-password"></label><button class="btn sm" id="pwb" style="margin-top:8px">Guardar</button></details>' +
+      '<button class="btn ghost" id="out">Cerrar sesión</button></div><p class="small muted center">¿Dudas? Llámanos al <a href="tel:614065526">614 065 526</a></p>';
+  }
+  APP.innerHTML = top('Hola, ' + me.cuenta.nombre.split(' ')[0], 'Mi área', null) + '<div class="pad"><div class="seg">' + TABS.map(t => '<button data-tab="' + t[0] + '" class="' + (t[0] === tab ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div>' + h + '</div>';
+  $$('[data-tab]').forEach(b => b.onclick = () => viewArea(b.dataset.tab));
+  $$('[data-file]').forEach(el => el.onclick = async () => { toast('Preparando el PDF…'); try { const x = await api('cFile', { kind: el.dataset.file, id: el.dataset.id }); const a = document.createElement('a'); a.href = x.data; a.download = x.name; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { toast(e.message, true); } });
+  if ($('#gcb')) $('#gcb').onclick = async () => { try { await api('cCanjear', { codigo: $('#gc').value }); toast('¡Tarjeta añadida!'); viewArea('monedero'); } catch (e) { toast(e.message, true); } };
+  if ($('#of')) $('#of').onchange = async e => { try { await api('cSave', { ofertas: e.target.checked }); toast('Guardado'); } catch (x) { toast(x.message, true); } };
+  if ($('#pwb')) $('#pwb').onclick = async () => { try { await api('cSave', { actual: $('#pa').value, password: $('#pn').value }); toast('Contraseña cambiada'); } catch (x) { toast(x.message, true); } };
+  if ($('#out')) $('#out').onclick = () => { S.me = null; logout(); };
 }
 function viewError(m) { APP.innerHTML = top('Efecto Mariposa', '', '') + '<div class="pad"><div class="card center"><p style="color:var(--bad)">' + esc(m) + '</p><a class="btn ghost" style="margin-top:12px" href="#">Ir al inicio</a></div></div>'; }
 

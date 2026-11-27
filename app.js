@@ -3,7 +3,7 @@
 'use strict';
 
 const CFG = window.EM_CONFIG || {};
-const VERSION = '3.6.0';
+const VERSION = '3.7.0';
 const ROOT = document.getElementById('root');
 
 /* ============================ Utilidades ============================ */
@@ -105,6 +105,7 @@ const ICONS = {
   copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
   chat: '<path d="m3 20 1.3-3.9A9 8 0 1 1 7.7 19L3 20"/>',
+  gift: '<path d="M3 8h18v4H3zM5 12v9h14v-9M12 8v13M12 8c-2-4-6-4-6-1s6 1 6 1 6 2 6-1-4-3-6 1"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><circle cx="12" cy="16" r="1"/><path d="M8 11V7a4 4 0 1 1 8 0v4"/>',
   flask: '<path d="M9 3h6M10 3v6L5 18a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3L14 9V3"/><path d="M7.5 14h9"/>',
   box: '<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m12 12 8-4.5M12 12v9M12 12 4 7.5"/>',
@@ -443,7 +444,7 @@ function renderLogin(msg) {
 }
 
 function logout(msg) {
-  S.token = ''; S.data = null; S.queue = []; S.crm = null; S.inv = null; S.sols = null; S.sol = null;
+  S.token = ''; S.data = null; S.queue = []; S.crm = null; S.inv = null; S.sols = null; S.sol = null; S.wallet = null;
   LS.del('token'); LS.del('snap'); LS.del('crm'); LS.del('inv');
   IDB.clear();
   renderLogin(typeof msg === 'string' ? msg : '');
@@ -460,7 +461,7 @@ function shell() {
     const map = isClient() ? { servicio: 'inicio', historico: 'buscar' } : { servicio: 'servicios', nuevo: 'servicios', historico: 'buscar', contacto: 'comercial', ficha: 'clientes', repaso: 'almacen', solicitud: 'solicitudes' };
     return (map[r.name] || r.name) === name;
   };
-  const activeTab = name => active(name) || (name === 'mas' && ['incidencias', 'horario', 'buscar', 'albaranes', 'equipo', 'clientes', 'ajustes', 'sistema', 'historico', 'panel', 'comercial', 'contacto', 'ficha', 'facturas', 'contabilidad', 'agenda', 'repaso', 'solicitudes', 'solicitud'].indexOf(r.name) >= 0);
+  const activeTab = name => active(name) || (name === 'mas' && ['incidencias', 'horario', 'buscar', 'albaranes', 'equipo', 'clientes', 'ajustes', 'sistema', 'historico', 'panel', 'comercial', 'contacto', 'ficha', 'facturas', 'contabilidad', 'agenda', 'repaso', 'solicitudes', 'solicitud', 'monedero'].indexOf(r.name) >= 0);
   return '<div class="app">' +
     '<aside class="side"><div class="brand"><img src="icons/logo-header.png" alt=""><div><b>Efecto Mariposa</b><small>Operaciones</small></div></div>' +
     side.map(x => Array.isArray(x) ? '<a href="#/' + x[0] + '" class="' + (active(x[0]) ? 'on' : '') + '">' + icon(x[1]) + x[2] + ((x[0] === 'incidencias' || x[0] === 'avisos') && inc ? '<span class="badge">' + inc + '</span>' : '') + '</a>' : '<div class="grp">' + x + '</div>').join('') +
@@ -486,7 +487,7 @@ function render(fromSync) {
   const ae = document.activeElement;
   if (fromSync && ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName) && ae.closest('main') && lastRendered === location.hash) { updateStatus(); return; }
   if (fromSync && $('.scrim')) { updateStatus(); return; }
-  if (fromSync && ['nuevo', 'ajustes', 'cuenta', 'horario', 'albaranes', 'almacen', 'buscar', 'equipo', 'clientes', 'sistema', 'jornada', 'panel', 'comercial', 'contacto', 'ficha', 'facturas', 'contabilidad', 'agenda', 'repaso', 'solicitudes', 'solicitud'].indexOf(r.name) >= 0 && lastRendered === location.hash) { updateStatus(); return; }
+  if (fromSync && ['nuevo', 'ajustes', 'cuenta', 'horario', 'albaranes', 'almacen', 'buscar', 'equipo', 'clientes', 'sistema', 'jornada', 'panel', 'comercial', 'contacto', 'ficha', 'facturas', 'contabilidad', 'agenda', 'repaso', 'solicitudes', 'solicitud', 'monedero'].indexOf(r.name) >= 0 && lastRendered === location.hash) { updateStatus(); return; }
   const y = lastRendered === location.hash ? window.scrollY : 0;
   ROOT.innerHTML = shell();
   const view = isClient() ? (CVIEWS[r.name] || CVIEWS.inicio) : (VIEWS[r.name] || VIEWS.inicio);
@@ -782,7 +783,7 @@ function detailView(ctx) {
   const incs = '<div class="card"><div class="row between"><h2>Incidencias</h2>' + (live ? '<button class="btn sm soft" data-newinc>' + icon('plus', 's') + 'Nueva</button>' : '') + '</div>' +
     (ctx.incidents.length ? ctx.incidents.map(i => {
       const ph = ctx.photos.filter(f => f.incidencia === i.id);
-      return '<div class="inc ' + (i.resuelta ? 'res' : '') + '"><div class="row between"><b style="font-size:14px">' + esc(i.tipo) + '</b>' + (i.resuelta ? '<span class="chip ok">Resuelta</span>' : i.bloqueante ? '<span class="chip bad">Bloquea la entrega</span>' : '<span class="chip warn">Abierta</span>') + '</div><p style="margin-top:3px">' + esc(i.texto) + '</p><p class="tiny muted row wrap" style="margin-top:3px;gap:6px">' + esc(D.userName(i.por)) + ' · ' + esc(fRel(i.fecha)) + (live ? ' <button class="here ' + (i.visible !== false ? 'on' : '') + '" data-incvis="' + esc(i.id) + '">' + (i.visible !== false ? 'Visible para el cliente' : 'Interna') + '</button>' : ' · ' + (i.visible !== false ? 'visible para el cliente' : 'interna')) + '</p>' +
+      return '<div class="inc ' + (i.resuelta ? 'res' : '') + '"><div class="row between"><b style="font-size:14px">' + esc(i.tipo) + '</b>' + (i.resuelta ? '<span class="chip ok">Resuelta</span>' : i.bloqueante ? '<span class="chip bad">Bloquea la entrega</span>' : '<span class="chip warn">Abierta</span>') + '</div><p style="margin-top:3px">' + esc(i.texto) + '</p>' + incAnswers(i) + '<p class="tiny muted row wrap" style="margin-top:3px;gap:6px">' + esc(D.userName(i.por)) + ' · ' + esc(fRel(i.fecha)) + (live ? ' <button class="here ' + (i.visible !== false ? 'on' : '') + '" data-incvis="' + esc(i.id) + '">' + (i.visible !== false ? 'Visible para el cliente' : 'Interna') + '</button>' : ' · ' + (i.visible !== false ? 'visible para el cliente' : 'interna')) + '</p>' +
         (ph.length ? '<div class="photos" style="margin-top:8px">' + ph.map(f => photoTile(f, ctx.year)).join('') + '</div>' : '') +
         (i.resuelta ? '<p class="small" style="margin-top:6px;color:var(--ok)">' + icon('check', 's') + ' ' + esc(i.resuelta.text) + ' <span class="muted">· ' + esc(D.userName(i.resuelta.by)) + '</span></p>' : live ? '<button class="btn sm ghost" style="margin-top:8px" data-resolve="' + esc(i.id) + '">Registrar solución</button>' : '') + '</div>';
     }).join('') : '<p class="muted small" style="margin-top:8px">Sin incidencias.</p>') + '</div>';
@@ -1383,7 +1384,7 @@ VIEWS.equipo = function () {
 };
 function accessText(u) {
   if (u.rol === 'admin') return 'Todo';
-  if (u.rol === 'cliente') return 'Portal de ' + ((u.acceso || [])[0] ? D.client(u.acceso[0]).nombre : '—');
+  if (u.rol === 'cliente') return 'Portal de ' + ((u.acceso || [])[0] ? D.client(u.acceso[0]).nombre : '—') + ' · ' + ({ responsable: 'Responsable', ver: 'Solo ver' }[u.permiso] || 'Coordinador');
   const a = u.acceso || [];
   if (!a.length) return 'Sin clientes asignados';
   return a.map(x => x === 'PARTICULARES' ? 'Particulares' : D.client(x).nombre).join(', ');
@@ -1397,7 +1398,8 @@ function editUser(u) {
     '<div id="uemp" ' + (st.rol === 'subcontrata' ? '' : 'hidden') + '><label class="f">Empresa subcontratada</label><input class="in" id="ue" value="' + esc(st.empresa) + '"></div>' +
     '<div id="uacc" ' + (st.rol === 'admin' ? 'hidden' : '') + '><label class="f" id="ual">' + (st.rol === 'cliente' ? 'Empresa a la que pertenece' : 'Clientes a los que tiene acceso') + '</label><div class="chips" id="ua">' + opts.map(o => '<button type="button" data-a="' + esc(o[0]) + '" class="' + (st.acceso.indexOf(o[0]) >= 0 ? 'on' : '') + '">' + esc(o[1]) + '</button>').join('') + '</div></div>' +
     '<div id="uhw" ' + (st.rol === 'cliente' ? 'hidden' : '') + '><label class="f">Horas semanales de contrato</label><input class="in" id="uh" type="number" min="0" max="60" value="' + esc(st.horas || 0) + '"></div>' +
-    '<p class="tiny muted" id="ucl" style="margin-top:10px" ' + (st.rol === 'cliente' ? '' : 'hidden') + '>' + icon('lock', 's') + ' Solo verá los vehículos de su empresa: avance, fotos e incidencias visibles y albaranes. Nunca ve trabajadores, horas ni notas internas.</p>' +
+    '<div id="uperm" ' + (st.rol === 'cliente' ? '' : 'hidden') + '><label class="f">Qué puede hacer</label><div class="seg" id="up">' + [['responsable', 'Responsable'], ['coordinador', 'Coordinador'], ['ver', 'Solo ver']].map(x => '<button type="button" data-p="' + x[0] + '" class="' + ((st.permiso || 'coordinador') === x[0] ? 'on' : '') + '">' + x[1] + '</button>').join('') + '</div><p class="tiny muted" id="upd" style="margin-top:6px"></p></div>' +
+    '<p class="tiny muted" id="ucl" style="margin-top:10px" ' + (st.rol === 'cliente' ? '' : 'hidden') + '>' + icon('lock', 's') + ' Solo verá los vehículos de su empresa: avance, fotos e incidencias visibles y albaranes. Nunca ve trabajadores, horas, precios ni notas internas.</p>' +
     (u && !isDir ? '<div class="row between" style="margin-top:14px"><b style="font-size:14px">Acceso activo</b><label class="switch"><input type="checkbox" id="uact" ' + (st.activo ? 'checked' : '') + '><span></span></label></div>' : '') +
     (u && !isDir && u.id !== me().id ? '<button class="btn danger wide" id="udel" style="margin-top:14px">' + icon('trash', 's') + 'Eliminar perfil</button><p class="tiny muted" style="margin-top:4px">No podrá volver a entrar. Lo que hizo (servicios, fichajes, almacén) se queda registrado con su nombre.</p>' : '') +
     '<div class="actions">' + (u && !isDir && u.activo ? '<button class="btn ghost" id="upin">' + icon('key', 's') + 'Nuevo PIN</button>' : '') + '<button class="btn" id="usv">Guardar</button></div>', (el, close) => {
@@ -1405,13 +1407,17 @@ function editUser(u) {
     const ud = $('#udel', el); if (ud) ud.onclick = async () => { if (!(await confirmSheet('Eliminar a ' + u.nombre, 'Su PIN deja de valer para siempre y sale de la lista. Todo lo que registró se conserva con su nombre.', 'Eliminar', true))) return; if (await command(async () => { await api('deleteUser', { id: u.id }); await sync(true); }, 'Perfil eliminado')) { close(); render(); } };
     $$('[data-a]', el).forEach(b => b.onclick = () => { if (st.rol === 'cliente') { st.acceso = [b.dataset.a]; $$('[data-a]', el).forEach(x => x.classList.toggle('on', x === b)); return; } const i = st.acceso.indexOf(b.dataset.a); if (i >= 0) st.acceso.splice(i, 1); else st.acceso.push(b.dataset.a); b.classList.toggle('on'); });
     if (st.rol === 'cliente') $('[data-a="PARTICULARES"]', el).hidden = true;
+    const PD = { responsable: 'Lo ve todo: vehículos, fotos, albaranes y conformidad, facturas. Puede pedir servicios.', coordinador: 'Vehículos, fotos, incidencias, albaranes y conformidad. Puede pedir servicios. No ve facturas.', ver: 'Solo consulta el estado de los vehículos y las fotos. No firma ni pide servicios.' };
+    st.permiso = st.permiso || 'coordinador'; $('#upd', el).textContent = PD[st.permiso];
+    $$('[data-p]', el).forEach(b => b.onclick = () => { st.permiso = b.dataset.p; $$('[data-p]', el).forEach(x => x.classList.toggle('on', x === b)); $('#upd', el).textContent = PD[st.permiso]; });
+    $$('[data-r]', el).forEach(b => b.addEventListener('click', () => { $('#uperm', el).hidden = st.rol !== 'cliente'; }));
     const pinBtn = $('#upin');
     if (pinBtn) pinBtn.onclick = async () => {
       if (!(await confirmSheet('Nuevo PIN', 'El PIN actual de ' + u.nombre + ' dejará de funcionar.', 'Generar nuevo PIN'))) return;
       let res; if (await command(async () => { res = await api('resetPin', { id: u.id }); })) showPin(res.nombre, res.pin);
     };
     $('#usv').onclick = async () => {
-      const body = { id: u ? u.id : '', nombre: $('#un').value, rol: st.rol, acceso: st.rol === 'admin' ? [] : st.acceso, horas: Number($('#uh').value) || 0, empresa: $('#ue') ? $('#ue').value : '' };
+      const body = { id: u ? u.id : '', nombre: $('#un').value, rol: st.rol, acceso: st.rol === 'admin' ? [] : st.acceso, horas: Number($('#uh').value) || 0, empresa: $('#ue') ? $('#ue').value : '', permiso: st.rol === 'cliente' ? st.permiso : '' };
       if ($('#uact')) body.activo = $('#uact').checked;
       if (!body.nombre.trim()) return toast('Indica el nombre.', true);
       if (body.rol !== 'admin' && !body.acceso.length) return toast(body.rol === 'cliente' ? 'Elige su empresa.' : 'Asigna al menos un cliente.', true);
@@ -1878,17 +1884,48 @@ function clientDetailHtml(ctx) {
     '<p class="meta" style="margin-top:10px">' + icon('shield', 's') + ' Protocolo de calidad: ' + s.progreso[0] + ' de ' + s.progreso[1] + ' controles completados</p></div>';
   const gal = '<div class="card"><div class="row between" style="margin-bottom:6px"><h2>Fotos</h2><span class="small muted">' + photos.length + '</span></div>' +
     (groups.length ? groups.map(g => '<p class="small muted" style="margin:10px 0 6px;font-weight:600">' + esc(g[0]) + '</p><div class="photos">' + g[1].map(f => photoTile(f, ctx.year)).join('') + '</div>').join('') : '<p class="muted small">' + (s.cerrado ? 'No hay fotos compartidas.' : 'Las fotos aparecerán aquí a medida que el equipo las suba.') + '</p>') + '</div>';
-  const incs = ctx.incidents.length ? '<div class="card"><h2>Incidencias</h2>' + ctx.incidents.map(i => '<div class="inc ' + (i.resuelta ? 'res' : '') + '"><div class="row between"><b style="font-size:14px">' + esc(i.tipo) + '</b>' + (i.resuelta ? '<span class="chip ok">Resuelta</span>' : '<span class="chip warn">En revisión</span>') + '</div><p style="margin-top:3px">' + esc(i.texto) + '</p><p class="tiny muted" style="margin-top:3px">' + esc(fRel(i.fecha)) + '</p>' + (i.resuelta ? '<p class="small" style="margin-top:6px;color:var(--ok)">' + icon('check', 's') + ' ' + esc(i.resuelta.text) + '</p>' : '') + '</div>').join('') + '</div>' : '';
+  const incs = ctx.incidents.length ? '<div class="card"><h2>Incidencias</h2>' + ctx.incidents.map(i => '<div class="inc ' + (i.resuelta ? 'res' : '') + '"><div class="row between"><b style="font-size:14px">' + esc(i.tipo) + '</b>' + (i.resuelta ? '<span class="chip ok">Resuelta</span>' : '<span class="chip warn">En revisión</span>') + '</div><p style="margin-top:3px">' + esc(i.texto) + '</p><p class="tiny muted" style="margin-top:3px">' + esc(fRel(i.fecha)) + '</p>' + (i.resuelta ? '<p class="small" style="margin-top:6px;color:var(--ok)">' + icon('check', 's') + ' ' + esc(i.resuelta.text) + '</p>' : '') + incAnswers(i) +
+    (ctx.reply ? '<div class="row wrap" style="gap:6px;margin-top:8px">' + ['Lo sabía', 'Visto, gracias', 'Llamadme, por favor'].map(t => '<button class="btn sm soft" data-irq="' + esc(i.id) + '" data-t="' + esc(t) + '">' + esc(t) + '</button>').join('') + (i.revisada ? '' : '<button class="btn sm green" data-irv="' + esc(i.id) + '">' + icon('check', 's') + 'Marcar revisada</button>') + '</div><div class="row" style="gap:6px;margin-top:6px"><input class="in grow" data-irt="' + esc(i.id) + '" placeholder="Escribe una respuesta"><button class="btn sm" data-irs="' + esc(i.id) + '">' + icon('send', 's') + '</button></div>' : '') + '</div>').join('') + '</div>' : '';
+  const signCard = ctx.sign && !s.cerrado && s.etapa === 'Listo' ? '<div class="card" id="cdeliv" style="border:2px solid var(--green)"><h2>¡Tu vehículo está listo!</h2><p class="small muted" style="margin-top:4px">Revisa el resultado y firma el albarán desde aquí, o en el móvil de nuestro equipo al recogerlo.</p>' +
+    '<label class="f">Nombre y apellidos</label><input class="in" id="cdn" autocomplete="name">' +
+    '<label class="f">Resultado</label><div class="seg" id="cdc"><button type="button" class="on" data-cc="Conforme">Conforme</button><button type="button" data-cc="Con observaciones">Con observaciones</button></div>' +
+    '<div id="cdo" hidden><label class="f">Observaciones</label><textarea class="in" id="cdot"></textarea></div>' +
+    '<label class="f">Firma</label><canvas class="sig" id="cdsig" width="900" height="340"></canvas><div class="row between" style="margin-top:6px"><span class="tiny muted">Firma con el dedo dentro del recuadro</span><button class="btn sm soft" type="button" id="cdclr">Borrar</button></div>' +
+    '<label class="check"><input type="checkbox" id="cda"> He revisado el servicio y recibo el vehículo en las condiciones indicadas.</label>' +
+    '<button class="btn green wide" id="cdgo">' + icon('sign') + 'Firmar albarán</button></div>' : '';
   const r = s.recibo;
   const sig = r && ctx.photos.find(f => f.id === r.firma);
   const rec = r ? '<div class="card"><div class="row between"><h2>Albarán de entrega</h2><span class="chip info">' + esc(r.numero) + '</span></div><dl class="kv" style="margin-top:10px"><dt>Recibido por</dt><dd>' + esc(r.signer) + '</dd><dt>Resultado</dt><dd>' + esc(r.conformity) + '</dd>' + (r.observations ? '<dt>Observaciones</dt><dd>' + esc(r.observations) + '</dd>' : '') + '<dt>Fecha</dt><dd>' + esc(fDate(r.at, true)) + '</dd></dl>' +
     (sig ? '<div class="photos" style="margin-top:10px;grid-template-columns:160px">' + photoTile(sig, ctx.year).replace('class="ph"', 'class="ph" style="aspect-ratio:2.6;background:#fff;border:1px solid var(--line)"') + '</div>' : '') + '</div>' : '';
   const info = '<div class="card"><h2>Datos del servicio</h2><dl class="kv" style="margin-top:10px"><dt>Matrícula</dt><dd>' + esc(s.matricula || '—') + '</dd>' + (s.chasis ? '<dt>Chasis</dt><dd>' + esc(s.chasis) + '</dd>' : '') + '<dt>Servicio</dt><dd>' + esc(s.tipo) + '</dd><dt>Recibido</dt><dd>' + esc(fDate(s.creado, true)) + '</dd>' + (s.cerrado ? '<dt>Entregado</dt><dd>' + esc(fDate(s.cerrado, true)) + '</dd>' : '') + '</dl></div>';
-  return hero + '<div class="detail" style="margin-top:12px"><div class="col">' + gal + incs + '</div><div class="col">' + rec + info + '</div></div>';
+  return hero + '<div class="detail" style="margin-top:12px"><div class="col">' + signCard + gal + incs + '</div><div class="col">' + rec + info + '</div></div>';
+}
+function incAnswers(i) {
+  return (i.respuestas || []).map(r => '<p class="small" style="margin-top:5px;background:var(--bg);border-radius:8px;padding:5px 9px">' + icon('chat', 's') + ' <b>' + esc(r.de) + ':</b> ' + esc(r.texto) + ' <span class="tiny muted">' + esc(fRel(r.at)) + '</span></p>').join('') + (i.revisada ? '<p class="tiny" style="margin-top:4px;color:var(--ok)">' + icon('check', 's') + ' Revisada por el cliente</p>' : '');
 }
 function mountClientDetail(el, ctx) {
   animRv();
   loadThumbs(el);
+  if (ctx.reply) {
+    const go = async (id, texto, revisada) => { if (!texto && !revisada) return; if (await command(() => ctx.reply(id, texto, revisada), 'Respuesta enviada')) ctx.after && ctx.after(); };
+    $$('[data-irq]', el).forEach(b => b.onclick = () => go(b.dataset.irq, b.dataset.t, false));
+    $$('[data-irv]', el).forEach(b => b.onclick = () => go(b.dataset.irv, '', true));
+    $$('[data-irs]', el).forEach(b => b.onclick = () => { const i = $('[data-irt="' + b.dataset.irs + '"]', el); go(b.dataset.irs, i.value.trim(), false); });
+  }
+  const cd = $('#cdeliv', el);
+  if (cd && ctx.sign) {
+    const pad = sigPad($('#cdsig', cd));
+    let conf = 'Conforme';
+    $('#cdclr', cd).onclick = () => pad.clear();
+    $$('[data-cc]', cd).forEach(b => b.onclick = () => { conf = b.dataset.cc; $$('[data-cc]', cd).forEach(x => x.classList.toggle('on', x === b)); $('#cdo', cd).hidden = conf === 'Conforme'; });
+    $('#cdgo', cd).onclick = async () => {
+      const r = { signer: $('#cdn', cd).value.trim(), role: 'Cliente', conformity: conf, observations: $('#cdot', cd).value.trim(), accepted: $('#cda', cd).checked, signature: pad.data() };
+      if (!r.signer) return toast('Escribe tu nombre.', true);
+      if (!pad.signed()) return toast('Falta tu firma.', true);
+      if (!r.accepted) return toast('Marca la casilla de conformidad.', true);
+      if (await command(() => ctx.sign(r), '¡Albarán firmado! Gracias')) ctx.after && ctx.after();
+    };
+  }
   el.addEventListener('click', e => { const ph = e.target.closest('[data-photo]'); if (ph) viewPhoto(ph.dataset.photo, ph.dataset.year, ctx); });
 }
 
@@ -1903,6 +1940,7 @@ CVIEWS.inicio = function () {
     '<div class="banner" style="background:var(--ok-bg);color:var(--ok);margin-bottom:10px">' + icon('lock') + '<span class="grow">Acceso privado. Solo ves los vehículos de ' + esc(c.nombre) + '.</span></div>' +
     '<div class="kpis kpis3"><div class="kpi"><small>En proceso</small><b>' + open.filter(s => s.etapa !== 'Listo').length + '</b></div><div class="kpi"><small>Listos</small><b style="color:var(--green)">' + open.filter(s => s.etapa === 'Listo').length + '</b></div><div class="kpi"><small>Entregados este mes</small><b>' + done.filter(s => madridDay(s.cerrado).slice(0, 7) === month).length + '</b></div></div>' +
     '<div class="sec"><h2>En proceso</h2></div>' + (open.length ? '<div class="cols">' + open.map(clientCard).join('') + '</div>' : empty('rv', 'Ahora mismo no hay vehículos en proceso', 'Cuando dejemos un vehículo en limpieza lo verás aquí en tiempo real.')) +
+    (me().permiso !== 'ver' ? '<a class="btn green wide" style="margin-top:12px" href="#/pedir">' + icon('plus', 's') + 'Pedir servicio</a>' : '') +
     (done.length ? '<div class="sec"><h2>Entregados recientemente</h2><a class="link" href="#/buscar">Historial</a></div><div class="cols">' + done.slice(0, 8).map(clientCard).join('') + '</div>' : '');
   return { title: 'Mis vehículos', html: html };
 };
@@ -1910,6 +1948,7 @@ CVIEWS.servicio = function (r) {
   const s = D.service(r.id);
   if (!s) return { title: 'Vehículo', back: true, html: empty('rv', 'Vehículo no disponible', 'Búscalo en el historial.') };
   const ctx = { s: s, photos: D.photos(s.id), incidents: D.incidents(s.id) };
+  if (me().permiso !== 'ver') { ctx.reply = (id, texto, revisada) => api('cliIncReply', { servicio: s.id, incidencia: id, texto: texto, revisada: revisada }); ctx.sign = r => api('cliSign', { servicio: s.id, receipt: Object.assign(r, { role: 'Responsable de empresa' }) }, 90000); ctx.after = async () => { await sync(true); render(); }; }
   return { title: s.matricula || s.chasis, back: true, html: clientDetailHtml(ctx), mount: el => mountClientDetail(el, ctx) };
 };
 CVIEWS.historico = function (r) {
@@ -1925,7 +1964,28 @@ CVIEWS.avisos = function () {
   return { title: 'Avisos', html: html };
 };
 CVIEWS.albaranes = function () {
-  return { title: 'Albaranes', html: '<p class="small muted" style="margin:0 2px 10px">Cada albarán reúne los vehículos entregados en un periodo, con la firma de cada entrega. Revísalo y da tu conformidad.</p><div id="alist"><div class="card empty">Cargando…</div></div>', mount: () => loadReceipts($('#alist'), false) };
+  const resp = me().permiso === 'responsable';
+  return { title: resp ? 'Documentos' : 'Albaranes', html: (resp ? '<div class="sec" style="margin-top:0"><h2>Facturas</h2></div><div id="flist"><div class="card empty">Cargando…</div></div><div class="sec"><h2>Albaranes</h2></div>' : '') + '<p class="small muted" style="margin:0 2px 10px">Cada albarán reúne los vehículos entregados en un periodo, con la firma de cada entrega. ' + (me().permiso === 'ver' ? 'Tu usuario es de consulta: la conformidad la da tu responsable.' : 'Revísalo y da tu conformidad.') + '</p><div id="alist"><div class="card empty">Cargando…</div></div>', mount: async () => {
+    loadReceipts($('#alist'), false);
+    if (!resp) return;
+    try {
+      const l = await api('cliFacturas', {});
+      $('#flist').innerHTML = l.length ? '<div class="card list" style="padding:2px 14px">' + l.map(f => '<div class="li"><div class="grow"><b>Factura ' + esc(f.numero) + '</b><div class="small muted">' + esc(fDate(f.fecha + 'T12:00:00Z')) + ' · ' + money(f.total) + (f.vence ? ' · vence ' + esc(fDate(f.vence + 'T12:00:00Z')) : '') + '</div></div><span class="chip ' + (/Pagad|Cobrad/.test(f.estado) ? 'ok' : 'warn') + '">' + esc(f.estado) + '</span><button class="iconbtn" data-fpdf="' + esc(f.id) + '" aria-label="Descargar">' + icon('download', 's') + '</button></div>').join('') + '</div>' : '<div class="card empty">Aún no hay facturas.</div>';
+      $$('[data-fpdf]').forEach(b => b.onclick = async () => { toast('Preparando PDF…'); try { const x = await api('cliFile', { id: b.dataset.fpdf }, 90000); dlData(x.name, x.data); } catch (e) { toast(e.message, true); } });
+    } catch (e) { $('#flist').innerHTML = '<div class="card empty">' + esc(e.message) + '</div>'; }
+  } };
+};
+function dlData(name, data) { const a = document.createElement('a'); a.href = data; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+CVIEWS.pedir = function () {
+  if (me().permiso === 'ver') return CVIEWS.inicio();
+  return { title: 'Pedir servicio', back: true, html: '<div class="card"><p class="small muted">Se aplica la tarifa pactada con vuestra empresa. Te confirmamos el día por correo.</p>' +
+    '<label class="f">Matrículas (una por línea)</label><textarea class="in" id="pv" placeholder="1234 ABC&#10;5678 DEF"></textarea>' +
+    '<label class="f">Tipo de limpieza</label><select class="in" id="pt">' + ['Limpieza de alquiler', 'Preparación de entrega', 'Exposición', 'Limpieza profunda', 'Exterior', 'Otro'].map(x => '<option>' + x + '</option>').join('') + '</select>' +
+    '<label class="f">Fecha deseada</label><input class="in" type="date" id="pdd">' +
+    '<label class="f">Notas</label><textarea class="in" id="pn"></textarea>' +
+    '<div class="actions"><button class="btn green" id="pgo">' + icon('send', 's') + 'Enviar pedido</button></div></div>', mount: el => {
+    $('#pgo', el).onclick = async () => { let r; if (await command(async () => { r = await api('cliPedir', { vehiculos: $('#pv', el).value, tipo: $('#pt', el).value, dia: $('#pdd', el).value, notas: $('#pn', el).value }); }, '')) { toast('Pedido ' + r.numero + ' enviado. Te confirmamos el día.'); go('inicio'); } };
+  } };
 };
 CVIEWS.buscar = function () { return VIEWS.buscar(); };
 CVIEWS.cuenta = function () {
@@ -1948,7 +2008,7 @@ async function renderPublic(token) {
     try {
       const d = await api('public', { t: token });
       S.data = { photos: d.photos, incidents: d.incidents, services: [d.service], clients: [d.client], times: [], team: [] };
-      const ctx = { s: d.service, photos: d.photos, incidents: d.incidents };
+      const ctx = { s: d.service, photos: d.photos, incidents: d.incidents, reply: (id, texto, revisada) => api('pIncReply', { t: token, incidencia: id, texto: texto, revisada: revisada }), sign: r => api('pSign', { t: token, receipt: r }, 90000), after: () => load() };
       ROOT.innerHTML = frame('<div class="banner" style="background:var(--ok-bg);color:var(--ok);margin-bottom:10px">' + icon('lock') + '<span class="grow">Enlace privado para ' + esc(d.client.nombre) + '. No lo compartas.</span></div>' + clientDetailHtml(ctx) +
         '<p class="tiny muted" style="text-align:center;margin-top:16px">' + (d.expires ? 'Este enlace estará disponible hasta el ' + esc(fDate(d.expires)) + '.' : 'Se actualiza solo mientras trabajamos en tu vehículo.') + '<br>Efecto Mariposa Clean &amp; Care · limpieza de autocaravanas y campers</p>');
       mountClientDetail($('main'), ctx);
@@ -3063,6 +3123,49 @@ VIEWS.solicitud = function (r) {
     $('#sprog', el).onclick = () => sheet('Programar servicio', '<label class="f">Día</label><input class="in" type="date" id="pd" value="' + esc(s.propuesto || s.dia || '') + '"><p class="small muted" style="margin-top:6px">Se añade a tu Google Calendar y el cliente recibe la confirmación.</p><div class="actions"><button class="btn" id="pok">Confirmar</button></div>', (sh, close) => { $('#pok', sh).onclick = () => { const d = $('#pd', sh).value; if (!d) return toast('Elige el día', true); close(); state('Programada', { dia: d }); }; });
     $('#sdone', el).onclick = async () => { if (await confirmSheet('Marcar como hecha', s.nombre + ' pasará a ser cliente.', 'Marcar hecha')) state('Hecha'); };
     $('#srej', el).onclick = async () => { if (await confirmSheet('Rechazar solicitud', 'Queda cerrada y anotada en Comercial.', 'Rechazar', true)) state('Rechazada'); };
+  } };
+};
+
+
+/* ------------------------------------------------------------------ */
+/* Monedero (bonos y tarjetas regalo) y ofertas exclusivas             */
+/* ------------------------------------------------------------------ */
+SIDE_ADMIN.splice(SIDE_ADMIN.indexOf('Dirección'), 0, ['monedero', 'gift', 'Bonos y ofertas']);
+async function loadWallet() { try { S.wallet = await api('walletList', {}); } catch (e) { S.wallet = { items: [], ofertas: [], suscritos: 0, cupo: 0, error: e.message }; } render(); }
+VIEWS.monedero = function () {
+  if (!isAdmin()) return VIEWS.inicio();
+  if (!S.wallet) return { title: 'Bonos y ofertas', html: '<div class="card empty">Cargando…</div>', mount: () => loadWallet() };
+  const W = S.wallet, bonos = W.items.filter(m => m.tipo === 'bono'), gifts = W.items.filter(m => m.tipo === 'regalo');
+  const item = m => '<div class="li"><div class="grow"><b>' + esc(m.tipo === 'bono' ? m.nombre + ' · ' + (m.clienteNombre || m.cuentaNombre) : m.codigo + ' · ' + money(m.saldo) + ' de ' + money(m.inicial)) + '</b><div class="small muted">' + esc(m.tipo === 'bono' ? m.usadas + ' de ' + m.visitas + ' visitas usadas' : [m.para && 'Para ' + m.para, m.de && 'de ' + m.de, m.cuentaNombre ? 'en la cuenta de ' + m.cuentaNombre : 'sin canjear'].filter(Boolean).join(' · ')) + (m.caduca ? ' · caduca ' + fDate(m.caduca + 'T12:00:00Z') : '') + '</div></div>' +
+    '<button class="btn sm soft" data-wu="' + esc(m.id) + '">' + (m.tipo === 'bono' ? 'Usar visita' : 'Descontar') + '</button><button class="iconbtn" data-wx="' + esc(m.id) + '" aria-label="Desactivar">' + icon('trash', 's') + '</button></div>';
+  const html = (W.error ? '<div class="banner warn">' + esc(W.error) + '</div>' : '') +
+    '<div class="sec"><h2>Ofertas exclusivas</h2><button class="btn sm" id="onew">' + icon('plus', 's') + 'Nueva oferta</button></div>' +
+    '<p class="small muted" style="margin:0 2px 8px">Se ven en el área de todos tus clientes y se envían por correo solo a quien aceptó recibirlas (' + W.suscritos + ' ahora mismo). Gmail permite unos ' + W.cupo + ' correos más hoy.</p>' +
+    (W.ofertas.length ? '<div class="card list" style="padding:2px 14px">' + W.ofertas.map(o => '<div class="li"><div class="grow"><b>' + esc(o.titulo) + (o.pct ? ' · −' + o.pct + ' %' : '') + '</b><div class="small muted">' + (o.hasta ? 'Hasta ' + esc(fDate(o.hasta + 'T12:00:00Z')) + ' · ' : '') + (o.activa ? 'Activa' : 'Oculta') + (o.enviada ? ' · enviada a ' + o.n + ' el ' + esc(fDate(o.enviada)) : '') + '</div></div><button class="btn sm green" data-os="' + esc(o.id) + '">' + icon('mail', 's') + 'Enviar</button><button class="iconbtn" data-oe="' + esc(o.id) + '" aria-label="Editar">' + icon('edit', 's') + '</button></div>').join('') + '</div>' : '<div class="card empty">Aún no hay ofertas.</div>') +
+    '<div class="sec"><h2>Bonos</h2><button class="btn sm" id="bnew">' + icon('plus', 's') + 'Nuevo bono</button></div>' +
+    (bonos.length ? '<div class="card list" style="padding:2px 14px">' + bonos.map(item).join('') + '</div>' : '<div class="card empty">Sin bonos activos.</div>') +
+    '<div class="sec"><h2>Tarjetas regalo</h2><button class="btn sm" id="gnew">' + icon('plus', 's') + 'Nueva tarjeta</button></div>' +
+    (gifts.length ? '<div class="card list" style="padding:2px 14px">' + gifts.map(item).join('') + '</div>' : '<div class="card empty">Sin tarjetas activas.</div>');
+  return { title: 'Bonos y ofertas', html: html, mount: el => {
+    const reload = async () => { S.wallet = null; await loadWallet(); };
+    const offer = o => sheet(o ? 'Editar oferta' : 'Nueva oferta', '<label class="f" style="margin-top:0">Título</label><input class="in" id="ot" value="' + esc(o ? o.titulo : '') + '" placeholder="Prepárala antes de Semana Santa"><label class="f">Texto</label><textarea class="in" id="ox" placeholder="Reserva ya y que no te pille la temporada.">' + esc(o ? o.texto : '') + '</textarea><div class="grid2"><div><label class="f">Descuento %</label><input class="in" id="op" type="number" min="0" max="50" value="' + esc(o ? o.pct : 10) + '"></div><div><label class="f">Válida hasta</label><input class="in" id="oh" type="date" value="' + esc(o ? o.hasta : '') + '"></div></div><label class="check"><input type="checkbox" id="oa" ' + (!o || o.activa ? 'checked' : '') + '> Visible en el área de clientes</label><p class="tiny muted">No se acumula con otros descuentos: siempre se aplica el mejor.</p><div class="actions"><button class="btn" id="osv">Guardar</button></div>', (sh, close) => {
+      $('#osv', sh).onclick = async () => { if (await command(() => api('offerSave', { id: o ? o.id : '', titulo: $('#ot', sh).value, texto: $('#ox', sh).value, pct: $('#op', sh).value, hasta: $('#oh', sh).value, activa: $('#oa', sh).checked }), 'Oferta guardada')) { close(); reload(); } };
+    });
+    $('#onew', el).onclick = () => offer(null);
+    $$('[data-oe]', el).forEach(b => b.onclick = () => offer(W.ofertas.find(o => o.id === b.dataset.oe)));
+    $$('[data-os]', el).forEach(b => b.onclick = async () => { if (!(await confirmSheet('Enviar oferta por correo', 'Le llega a ' + W.suscritos + ' clientes que aceptaron recibir ofertas.', 'Enviar'))) return; let r; if (await command(async () => { r = await api('offerSend', { id: b.dataset.os }, 120000); }, '')) { toast('Enviada a ' + r.enviados + (r.pendientes ? ' · ' + r.pendientes + ' quedan para mañana (límite de Gmail)' : '')); reload(); } });
+    $('#bnew', el).onclick = () => sheet('Nuevo bono', '<label class="f" style="margin-top:0">Cliente</label><select class="in" id="bc">' + D.clients().slice().sort((a, b) => a.nombre.localeCompare(b.nombre)).map(c => '<option value="' + esc(c.id) + '">' + esc(c.nombre) + '</option>').join('') + '</select><label class="f">Bono</label><div class="seg" id="bt">' + [['Escapadas', 2], ['Temporadas', 4], ['Siempre a punto', 6]].map((x, i) => '<button type="button" data-bn="' + x[0] + '" data-bv="' + x[1] + '" class="' + (i === 1 ? 'on' : '') + '">' + x[0] + ' · ' + x[1] + '</button>').join('') + '</div><label class="f">Caduca (opcional)</label><input class="in" type="date" id="bk"><p class="tiny muted">El cobro del bono lo registras en Facturas como siempre. Aquí solo llevas las visitas.</p><div class="actions"><button class="btn" id="bsv">Crear bono</button></div>', (sh, close) => {
+      let nb = 'Temporadas', nv = 4;
+      $$('[data-bn]', sh).forEach(b => b.onclick = () => { nb = b.dataset.bn; nv = Number(b.dataset.bv); $$('[data-bn]', sh).forEach(x => x.classList.toggle('on', x === b)); });
+      $('#bsv', sh).onclick = async () => { if (await command(() => api('walletSave', { tipo: 'bono', cliente: $('#bc', sh).value, nombre: nb, visitas: nv, caduca: $('#bk', sh).value }), 'Bono creado')) { close(); reload(); } };
+    });
+    $('#gnew', el).onclick = () => sheet('Nueva tarjeta regalo', '<label class="f" style="margin-top:0">Importe (€)</label><input class="in" id="gs" inputmode="decimal" placeholder="50"><div class="grid2"><div><label class="f">De (quien regala)</label><input class="in" id="gd"></div><div><label class="f">Para</label><input class="in" id="gp"></div></div><label class="f">Correo de quien la recibe (opcional, le enviamos el código)</label><input class="in" id="ge" type="email"><label class="f">Caduca (opcional)</label><input class="in" type="date" id="gk"><div class="actions"><button class="btn" id="gsv">Crear tarjeta</button></div>', (sh, close) => {
+      $('#gsv', sh).onclick = async () => { let r; if (await command(async () => { r = await api('walletSave', { tipo: 'regalo', saldo: $('#gs', sh).value.replace(',', '.'), de: $('#gd', sh).value, para: $('#gp', sh).value, email: $('#ge', sh).value, caduca: $('#gk', sh).value }); }, '')) { close(); toast('Tarjeta creada: ' + r.codigo); reload(); } };
+    });
+    $$('[data-wu]', el).forEach(b => b.onclick = () => { const m = W.items.find(x => x.id === b.dataset.wu); sheet(m.tipo === 'bono' ? 'Usar visita del bono' : 'Descontar de la tarjeta', (m.tipo === 'bono' ? '<p class="small">' + esc(m.nombre) + ' · quedan ' + (m.visitas - m.usadas) + ' visitas</p>' : '<label class="f" style="margin-top:0">Importe a descontar (saldo ' + money(m.saldo) + ')</label><input class="in" id="wi" inputmode="decimal">') + '<label class="f">Nota (servicio, fecha…)</label><input class="in" id="wn"><div class="actions"><button class="btn" id="wgo">Guardar</button></div>', (sh, close) => {
+      $('#wgo', sh).onclick = async () => { if (await command(() => api('walletUse', { id: m.id, importe: $('#wi', sh) ? $('#wi', sh).value.replace(',', '.') : '', nota: $('#wn', sh).value }), 'Hecho')) { close(); reload(); } };
+    }); });
+    $$('[data-wx]', el).forEach(b => b.onclick = async () => { if (await confirmSheet('Desactivar', 'Deja de verse en el área del cliente.', 'Desactivar', true) && await command(() => api('walletSave', { id: b.dataset.wx, activo: false }), 'Desactivado')) reload(); });
   } };
 };
 
