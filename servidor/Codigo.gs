@@ -10,7 +10,7 @@
 
 const APP = {
   nombre: 'Efecto Mariposa · Operaciones',
-  version: '3.5.0',
+  version: '3.6.0',
   appUrl: 'https://efectomariposaclean-create.github.io/em-operaciones/',
   diasEnlace: 15,          // días que el enlace del particular sigue activo tras la entrega
   zona: 'Europe/Madrid',
@@ -19,7 +19,8 @@ const APP = {
   copiasGuardadas: 30,    // copias diarias que se conservan
   sesionDias: 30,
   logoDriveId: '19NRhA8ki8p5HPogdmMtAWarafkQAUu5I',
-  marcaAguaDriveId: '1MmA9SLhIcpODuhz0m2JatGb2LZAYyyya'
+  marcaAguaDriveId: '1MmA9SLhIcpODuhz0m2JatGb2LZAYyyya',
+  clienteUrl: ''          // vacío = la página cliente.html de la app; cuando tengas el dominio: 'https://clientes.efectomariposaclean.es/cliente.html'
 };
 
 const ROLES = ['admin', 'trabajador', 'subcontrata', 'cliente'];
@@ -53,11 +54,13 @@ const SCHEMA = {
   Contactos:  ['id', 'nombre', 'tipo', 'contacto', 'telefono', 'email', 'vehiculo', 'ubicacion', 'fase', 'prioridad', 'proxAccion', 'proxFecha', 'origen', 'importe', 'notas', 'revisar', 'cliente', 'evento', 'carpeta', 'creado', 'actualizado', 'ref'],
   Facturas:   ['id', 'numero', 'fecha', 'cliente', 'datos', 'lineas', 'imponible', 'ivaPct', 'iva', 'retPct', 'ret', 'total', 'estado', 'cobros', 'vence', 'archivo', 'notas', 'servicios', 'origen', 'por', 'creado', 'anticipo'],
   Presupuestos:['id', 'numero', 'fecha', 'contacto', 'cliente', 'datos', 'lineas', 'imponible', 'ivaPct', 'iva', 'total', 'validez', 'estado', 'archivo', 'notas', 'por', 'creado'],
+  Cuentas:    ['id', 'email', 'nombre', 'telefono', 'hash', 'sal', 'tipo', 'cliente', 'contacto', 'rol', 'ofertas', 'bienvenida', 'tokenV', 'activo', 'creado', 'ultimo'],
+  Solicitudes:['id', 'numero', 'fecha', 'cuenta', 'contacto', 'cliente', 'nombre', 'telefono', 'email', 'sel', 'vehiculo', 'resumen', 'lineas', 'manual', 'descuento', 'total', 'estado', 'fotos', 'chat', 'dia', 'propuesto', 'token', 'revisado', 'notas', 'carpeta', 'ofertas', 'evento', 'actualizado'],
   Contabilidad:['id', 'fecha', 'tipo', 'categoria', 'concepto', 'proveedor', 'imponible', 'ivaPct', 'iva', 'total', 'deducible', 'ivaDed', 'metodo', 'justificante', 'notas', 'origen', 'ref', 'por', 'creado']
 };
 const NOCACHE = { Articulos: 1, Movimientos: 1, Cargas: 1, Ubicaciones: 1 };
-const JSON_COLS = { tipos: 1, acceso: 1, extras: 1, grupos: 1, notas: 1, fases: 1, maquina: 1, recibo: 1, archivado: 1, resuelta: 1, descansos: 1, geo: 1, auditoria: 1, servicios: 1, antes: 1, despues: 1, avisos: 1, conformidad: 1, base: 1, segun: 1, no: 1, crm: 1, tarifa: 1, lineas: 1, cobros: 1, datos: 1, anticipo: 1 };
-const SCHEMA_V = '7';
+const JSON_COLS = { tipos: 1, acceso: 1, extras: 1, grupos: 1, notas: 1, fases: 1, maquina: 1, recibo: 1, archivado: 1, resuelta: 1, descansos: 1, geo: 1, auditoria: 1, servicios: 1, antes: 1, despues: 1, avisos: 1, conformidad: 1, base: 1, segun: 1, no: 1, crm: 1, tarifa: 1, lineas: 1, cobros: 1, datos: 1, anticipo: 1, sel: 1, descuento: 1, fotos: 1, chat: 1 };
+const SCHEMA_V = '8';
 const ARCHIVABLES = ['Servicios', 'Tiempos', 'Incidencias', 'Fotos', 'Jornadas', 'Cambios', 'Actividad'];
 
 /* ------------------------------------------------------------------ */
@@ -122,10 +125,10 @@ function doPost(e) {
   let req;
   try { req = JSON.parse(e.postData.contents); } catch (err) { return out_({ ok: false, error: 'Petición no válida.' }); }
   try {
-    const fn = ACTIONS[req.action] || (typeof CRM_ACTIONS !== 'undefined' ? CRM_ACTIONS[req.action] : null);
+    const fn = ACTIONS[req.action] || (typeof CRM_ACTIONS !== 'undefined' ? CRM_ACTIONS[req.action] : null) || (typeof PORTAL_ACTIONS !== 'undefined' ? PORTAL_ACTIONS[req.action] : null);
     if (!fn) throw Error('Acción desconocida.');
     if (versions_().SCHEMA_V !== SCHEMA_V) migrate_();
-    const open = req.action === 'login' || req.action === 'public' || req.action === 'publicPhoto';
+    const open = req.action === 'login' || req.action === 'public' || req.action === 'publicPhoto' || (typeof PORTAL_OPEN !== 'undefined' && !!PORTAL_OPEN[req.action]);
     const user = open ? null : session_(req.token);
     const data = fn(req.data || {}, user, req);
     flushMail_();
@@ -557,6 +560,7 @@ function mailHtml_(title, lines, button, link, foot, badge) {
     '</table></td></tr></table></body></html>';
 }
 function sendMail_(m) {
+  if (m.raw) { MailApp.sendEmail({ to: m.to, subject: m.subject, htmlBody: m.html, name: 'Efecto Mariposa' }); return; }
   const s = m.s, c = m.client, plate = esc_(s.matricula || s.chasis);
   const particular = c.tipo === 'particular';
   const link = particular ? linkOf_(s) : APP.appUrl;
