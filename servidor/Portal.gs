@@ -27,6 +27,19 @@ const PORTAL_ACTIONS = {
   solList: solList_, solGet: solGet_, solReview: solReview_, solMsg: solMsg_, solState: solState_, solPhoto: solPhoto_
 };
 
+
+/* Procedencia: de dónde llega cada persona (enlace etiquetado, lo que declara y colaborador). */
+const P_CONOCIO = ['Google', 'Instagram', 'TikTok', 'Facebook', 'Recomendación', 'Caravaning K2', 'Colaborador', 'Folleto o QR', 'Ya soy cliente', 'Otros'];
+function origen_(d) {
+  const canal = String(d.origen || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 40) || 'DIRECTO';
+  const conocio = P_CONOCIO.indexOf(d.conocio) >= 0 ? d.conocio : '';
+  const colab = clean_(d.colaborador, 80);
+  const pagina = clean_(d.pagina, 60);
+  const etiqueta = canal !== 'DIRECTO' && canal !== 'WEB' && canal !== 'APP' ? canal : (conocio || (canal === 'WEB' ? 'Web' : canal === 'APP' ? 'App' : 'Directo'));
+  const texto = ['Canal: ' + canal, conocio && 'Nos conoció por: ' + conocio, colab && 'Colaborador: ' + colab, pagina && 'Página: ' + pagina].filter(Boolean).join(' · ');
+  return { canal: canal, conocio: conocio, colab: colab, etiqueta: etiqueta, texto: texto };
+}
+
 function clientUrl_() { return APP.clienteUrl || (APP.appUrl + 'cliente.html'); }
 function dd_(x) { return !x ? '' : String(x).length > 10 ? day_(x) : String(x); }
 function r2_(n) { return Math.round(n * 100) / 100; }
@@ -166,7 +179,20 @@ function pRegister_(d) {
     const sal = 's' + secret_().slice(0, 16);
     const clients = read_('Clientes');
     const cl = clients.find(c => c.tipo === 'particular' && ((tel && norm_(c.telefono) === norm_(tel)) || emailsOf_(c).indexOf(mail) >= 0));
-    const a = { id: 'a-' + uid_().slice(0, 8), email: mail, nombre: nombre, telefono: tel, hash: pwHash_(pw, sal), sal: sal, tipo: 'particular', cliente: cl ? cl.id : '', contacto: sol ? sol.contacto : '', rol: 'titular', ofertas: !!d.ofertas, bienvenida: '', tokenV: 1, activo: true, creado: iso_(), ultimo: iso_() };
+    const o = origen_(d);
+    let contacto = sol ? sol.contacto : '';
+    if (!cl && !contacto) {                  // cuenta sin solicitud: entra en el CRM como prospecto
+      const cs = read_('Contactos');
+      let c = cs.find(x => !x.cliente && ((tel && norm_(x.telefono) === norm_(tel)) || (x.email && String(x.email).toLowerCase() === mail)));
+      const nota = note_(null, 'Ha creado su cuenta en el área de clientes.' + (d.ofertas ? ' Acepta recibir ofertas.' : '') + '\n' + o.texto, 'Nota');
+      if (c) { c.notas = (c.notas || []).concat([nota]); c.actualizado = iso_(); update_('Contactos', c); }
+      else {
+        c = { id: 'p-' + uid_().slice(0, 8), nombre: nombre, tipo: 'Particular', contacto: '', telefono: tel, email: mail, vehiculo: '', ubicacion: '', fase: 'Nuevo', prioridad: 'B', proxAccion: 'Bienvenida: ofrecer presupuesto', proxFecha: shift_(day_(), 1), origen: o.etiqueta, importe: '', notas: [nota], revisar: false, cliente: '', evento: '', carpeta: '', creado: iso_(), actualizado: iso_(), ref: 'cuenta' };
+        insert_('Contactos', c);
+      }
+      contacto = c.id;
+    }
+    const a = { id: 'a-' + uid_().slice(0, 8), email: mail, nombre: nombre, telefono: tel, hash: pwHash_(pw, sal), sal: sal, tipo: 'particular', cliente: cl ? cl.id : '', contacto: contacto, rol: 'titular', ofertas: !!d.ofertas, bienvenida: '', tokenV: 1, activo: true, creado: iso_(), ultimo: iso_(), procedencia: o.texto };
     insert_('Cuentas', a);
     read_('Solicitudes').filter(s => s.email === mail && !s.cuenta).forEach(s => {
       s.cuenta = a.id;
@@ -273,7 +299,8 @@ function pRequest_(d) {
   if (norm_(tel).length < 9) fail_('Escribe un teléfono válido.');
   if (!mailOk_(email)) fail_('Escribe un correo válido: ahí te llega el enlace.');
   if (!d.privacidad) fail_('Acepta la política de privacidad para continuar.');
-  const info = ['Furgoneta', 'Cabeza tractora', 'Camión', 'Autobús'].indexOf(d.info) >= 0 ? d.info : '';
+  const info = ['Furgoneta', 'Cabeza tractora', 'Camión', 'Autobús', 'Flota de empresa', 'Coche de empresa'].indexOf(d.info) >= 0 ? d.info : '';
+  const o = origen_(d), empresa = clean_(d.empresa, 120);
   const sel = info ? { w: 2 } : (d.sel || {});
   if (!info) sel.habitual = read_('Clientes').some(c => (norm_(tel) && norm_(c.telefono) === norm_(tel)) || emailsOf_(c).indexOf(email) >= 0);   // mantenimiento solo para clientes habituales
   const p = info ? { lineas: [{ c: 'Precio a medida · ' + info, imp: 0 }], resumen: 'Información · ' + info } : precio_(sel);
@@ -286,7 +313,7 @@ function pRequest_(d) {
     const acc = read_('Cuentas').find(a => a.email === email && a.activo !== false) || null;
     const clients = read_('Clientes');
     const cl = clients.find(c => (norm_(tel) && norm_(c.telefono) === norm_(tel)) || emailsOf_(c).indexOf(email) >= 0);
-    const detalle = [p.resumen, 'Vehículo: ' + [veh, clean_(d.modelo, 80)].filter(Boolean).join(' · '), info ? '' : 'Lugar: ' + P_PLACES[Number(sel.w)] + (sel.rec ? ' (recogida)' : ''), info ? 'Precio a medida' : 'Precio calculado: ' + eurP_(bruto_(p.lineas)), clean_(d.notas, 600) && 'Notas: ' + clean_(d.notas, 600)].filter(Boolean).join('\n');
+    const detalle = [p.resumen, 'Vehículo: ' + [veh, clean_(d.modelo, 80)].filter(Boolean).join(' · '), info ? '' : 'Lugar: ' + P_PLACES[Number(sel.w)] + (sel.rec ? ' (recogida)' : ''), info ? 'Precio a medida' : 'Precio calculado: ' + eurP_(bruto_(p.lineas)), empresa && 'Empresa: ' + empresa, clean_(d.notas, 600) && 'Notas: ' + clean_(d.notas, 600), o.texto].filter(Boolean).join('\n');
     let contacto = '';
     if (cl) {
       cl.crm = cl.crm || {};
@@ -304,7 +331,7 @@ function pRequest_(d) {
         c.evento = calFollow_(c.evento, c.proxFecha, c.proxAccion, c.nombre, c.telefono);
         update_('Contactos', c);
       } else {
-        c = { id: 'p-' + uid_().slice(0, 8), nombre: nombre, tipo: 'Particular', contacto: '', telefono: tel, email: email, vehiculo: veh, ubicacion: clean_(d.municipio, 80), fase: 'Nuevo', prioridad: 'A', proxAccion: 'Revisar solicitud ' + numero, proxFecha: day_(), origen: 'App', importe: r2_(bruto_(p.lineas) / 1.21), notas: [nota], revisar: false, cliente: '', evento: '', carpeta: '', creado: iso_(), actualizado: iso_(), ref: 'app:' + numero };
+        c = { id: 'p-' + uid_().slice(0, 8), nombre: empresa || nombre, tipo: empresa ? 'Empresa' : 'Particular', contacto: empresa ? nombre : '', telefono: tel, email: email, vehiculo: veh, ubicacion: clean_(d.municipio, 80), fase: 'Nuevo', prioridad: 'A', proxAccion: 'Revisar solicitud ' + numero, proxFecha: day_(), origen: o.etiqueta, importe: r2_(bruto_(p.lineas) / 1.21), notas: [nota], revisar: false, cliente: '', evento: '', carpeta: '', creado: iso_(), actualizado: iso_(), ref: 'app:' + numero };
         c.evento = calFollow_('', c.proxFecha, c.proxAccion, c.nombre, c.telefono);
         insert_('Contactos', c);
       }
@@ -319,12 +346,12 @@ function pRequest_(d) {
     }
     const s = { vale: vale, id: uid_(), numero: numero, fecha: iso_(), cuenta: acc ? acc.id : '', contacto: contacto, cliente: cl ? cl.id : '', nombre: nombre, telefono: tel, email: email,
       sel: sel, vehiculo: [veh, clean_(d.modelo, 80)].filter(Boolean).join(' · '), resumen: p.resumen, lineas: p.lineas, manual: 0, descuento: null, total: 0,
-      estado: 'Recibida', fotos: [], chat: clean_(d.notas, 600) ? [{ at: iso_(), de: 'cliente', texto: clean_(d.notas, 600) }] : [], dia: '', propuesto: '', token: 't' + secret_(), revisado: '', notas: '', carpeta: '', ofertas: !!d.ofertas, actualizado: iso_() };
+      estado: 'Recibida', fotos: [], chat: clean_(d.notas, 600) ? [{ at: iso_(), de: 'cliente', texto: clean_(d.notas, 600) }] : [], dia: '', propuesto: '', token: 't' + secret_(), revisado: '', notas: '', carpeta: '', ofertas: !!d.ofertas, actualizado: iso_(), procedencia: o.texto };
     recalc_(s, acc);
     insert_('Solicitudes', s);
     const link = clientUrl_() + '#s=' + s.token;
     pmail_(email, 'Hemos recibido tu solicitud ' + numero, 'Solicitud recibida, ' + esc_(nombre.split(' ')[0]), info ? ['Gracias por confiar en Efecto Mariposa.', 'Hemos recibido tu petición de información para <b>' + esc_(info) + '</b>. Te llamamos muy pronto para preparar un precio a medida.', 'Desde tu enlace puedes escribirnos y enviarnos fotos.'] : ['Gracias por confiar en Efecto Mariposa.', 'Tu presupuesto calculado: <b>' + eurP_(s.total) + '</b> (IVA incluido) para ' + esc_(p.resumen) + '.', 'Revisamos tus fotos y lo que has marcado. Si todo cuadra, te lo confirmamos; si no, te llamamos.', 'Desde tu enlace puedes añadir fotos, escribirnos y ver el estado.' + (!acc && bruto_(p.lineas) >= P_MIN_BIENVENIDA ? ' <b>Si creas tu cuenta, tienes un 10 % de descuento en este primer servicio.</b>' : '')], 'Ver mi solicitud', link, 'Solicitud ' + numero);
-    pmail_(ownerMail_(), 'Nueva solicitud ' + numero + ' · ' + nombre, 'Nueva solicitud desde la app', ['<b>' + esc_(nombre) + '</b> · ' + esc_(tel) + ' · ' + esc_(email), esc_(detalle).replace(/\n/g, '<br>'), 'Total calculado: <b>' + eurP_(s.total) + '</b>'], 'Abrir EM Operaciones', APP.appUrl + '#/solicitudes', 'Nueva solicitud');
+    pmail_(ownerMail_(), 'Nueva solicitud ' + numero + ' · ' + nombre, 'Nueva solicitud desde la app', ['<b>' + esc_(nombre) + '</b> · ' + esc_(tel) + ' · ' + esc_(email), esc_(detalle).replace(/\n/g, '<br>'), 'Total calculado: <b>' + eurP_(s.total) + '</b>', '<span style="color:#a8842f">' + esc_(o.texto) + '</span>'], 'Abrir EM Operaciones', APP.appUrl + '#/solicitudes', 'Nueva solicitud');
     return { t: s.token, numero: numero };
   });
 }
@@ -415,7 +442,7 @@ function pAccept_(d) {
 
 function solAdmin_(s) {
   const o = solOut_(s);
-  o.id = s.id; o.telefono = s.telefono; o.email = s.email; o.contacto = s.contacto; o.cliente = s.cliente; o.sel = s.sel; o.manual = s.manual || 0; o.notas = s.notas; o.cuentaId = s.cuenta;
+  o.id = s.id; o.telefono = s.telefono; o.email = s.email; o.contacto = s.contacto; o.cliente = s.cliente; o.sel = s.sel; o.manual = s.manual || 0; o.notas = s.notas; o.cuentaId = s.cuenta; o.procedencia = s.procedencia || '';
   return o;
 }
 function solList_(d, u) {
