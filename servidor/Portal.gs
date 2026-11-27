@@ -81,6 +81,11 @@ function descuento_(sol, acc) {
 function recalc_(sol, acc) {
   sol.descuento = descuento_(sol, acc);
   sol.total = r2_(bruto_(sol.lineas) - (sol.descuento ? sol.descuento.imp : 0));
+  if (sol.vale && sol.vale.codigo) {
+    const m = valeFind_(sol.vale.codigo);
+    const saldo = m && m.activo !== false ? Number(m.saldo) : 0;
+    sol.vale.imp = r2_(Math.min(Math.max(saldo, sol.vale.usado ? sol.vale.imp : 0), sol.total));
+  }
   return sol;
 }
 
@@ -109,7 +114,28 @@ function cparse_(token, kind) {
   if (!a || a.activo === false || (Number(a.tokenV) || 1) !== p.v) fail_(kind === 'm' ? 'Este enlace ya no es válido.' : 'SESION');
   return a;
 }
-function csession_(req) { return cparse_(req && req.token, 's'); }
+function csession_(req) {
+  const t = req && req.token;
+  if (typeof t === 'string' && t.indexOf('v.') === 0) {   // «Ver como este cliente» (solo lectura, dirección)
+    const parts = t.slice(2).split('.');
+    if (parts.length !== 2 || sign_('v:' + parts[0]) !== parts[1]) fail_('SESION');
+    let p; try { p = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString()); } catch (e) { fail_('SESION'); }
+    if (!p || p.e < Date.now()) fail_('SESION');
+    const c = clientById_(read_('Clientes'), p.c);
+    if (!c) fail_('SESION');
+    const acc = read_('Cuentas').find(a => a.cliente === c.id);
+    return { id: acc ? acc.id : 'preview', cliente: c.id, nombre: c.nombre, email: acc ? acc.email : (emailsOf_(c)[0] || ''), telefono: c.telefono || '', ofertas: acc ? acc.ofertas : false, bienvenida: 'x', preview: true };
+  }
+  return cparse_(t, 's');
+}
+function noPreview_(a) { if (a.preview) fail_('Estás viendo el área como el cliente: es solo de lectura.'); }
+function clientPreview_(d, u) {
+  admin_(u);
+  const c = clientById_(read_('Clientes'), d.cliente);
+  if (!c) fail_('Cliente no encontrado.');
+  const body = Utilities.base64EncodeWebSafe(JSON.stringify({ c: c.id, e: Date.now() + 30 * 60e3 })).replace(/=+$/, '');
+  return { url: clientUrl_() + '#ver=v.' + body + '.' + sign_('v:' + body) };
+}
 function sessionOut_(a) { return { token: ctoken_(a, 's', APP.sesionDias * 864e5), cuenta: accOut_(a) }; }
 function accOut_(a) { return { nombre: a.nombre, email: a.email, telefono: a.telefono, ofertas: !!a.ofertas, bienvenida: !a.bienvenida && !a.cliente }; }
 function mailOk_(e) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e); }
@@ -181,6 +207,7 @@ function pMagic_(d) {
 }
 function cSave_(d, u, req) {
   const a = csession_(req);
+  noPreview_(a);
   return locked_(() => {
     if (d.ofertas !== undefined) a.ofertas = !!d.ofertas;
     if (d.telefono !== undefined) a.telefono = clean_(d.telefono, 30);
@@ -208,7 +235,7 @@ function solOut_(s, acc) {
   const bruto = bruto_(s.lineas);
   return {
     t: s.token, numero: s.numero, fecha: s.fecha, estado: s.estado, resumen: s.resumen, nombre: s.nombre,
-    lineas: s.lineas, bruto: bruto, descuento: s.descuento, total: s.total, revisado: s.revisado, dia: dd_(s.dia), propuesto: dd_(s.propuesto),
+    lineas: s.lineas, bruto: bruto, descuento: s.descuento, total: s.total, vale: s.vale && s.vale.codigo ? { codigo: s.vale.codigo, imp: s.vale.imp } : null, pagar: r2_(s.total - (s.vale && s.vale.imp || 0)), revisado: s.revisado, dia: dd_(s.dia), propuesto: dd_(s.propuesto),
     lugar: P_PLACES[Number(s.sel && s.sel.w)] || '', vehiculo: s.vehiculo,
     fotos: (s.fotos || []).map(f => ({ id: f.id, slot: f.slot })),
     chat: (s.chat || []).map(m => ({ at: m.at, de: m.de, texto: m.texto })),
@@ -262,7 +289,14 @@ function pRequest_(d) {
       }
       contacto = c.id;
     }
-    const s = { id: uid_(), numero: numero, fecha: iso_(), cuenta: acc ? acc.id : '', contacto: contacto, cliente: cl ? cl.id : '', nombre: nombre, telefono: tel, email: email,
+    let vale = null;
+    if (d.vale) {
+      const vm = valeFind_(d.vale);
+      valeCheck_(vm, email);
+      vale = { codigo: vm.codigo, imp: 0 };
+      if (!vm.usuario) { vm.usuario = email; vm.movs = (vm.movs || []).concat([{ at: iso_(), texto: 'Indicado en la solicitud ' + numero + ' por ' + nombre }]); if (acc) vm.cuenta = acc.id; update_('Monedero', vm); }
+    }
+    const s = { vale: vale, id: uid_(), numero: numero, fecha: iso_(), cuenta: acc ? acc.id : '', contacto: contacto, cliente: cl ? cl.id : '', nombre: nombre, telefono: tel, email: email,
       sel: sel, vehiculo: [veh, clean_(d.modelo, 80)].filter(Boolean).join(' · '), resumen: p.resumen, lineas: p.lineas, manual: 0, descuento: null, total: 0,
       estado: 'Recibida', fotos: [], chat: clean_(d.notas, 600) ? [{ at: iso_(), de: 'cliente', texto: clean_(d.notas, 600) }] : [], dia: '', propuesto: '', token: 't' + secret_(), revisado: '', notas: '', carpeta: '', ofertas: !!d.ofertas, actualizado: iso_() };
     recalc_(s, acc);
@@ -448,6 +482,12 @@ function solState_(d, u) {
       cur.evento = calService_(cur.evento, dia, cur);
       pmail_(cur.email, 'Servicio confirmado · ' + dia.split('-').reverse().join('/'), 'Tu servicio está confirmado', ['Hola, ' + esc_(cur.nombre.split(' ')[0]) + ':', 'Te esperamos el <b>' + dia.split('-').reverse().join('/') + '</b> · ' + esc_(P_PLACES[Number(cur.sel && cur.sel.w)] || '') + '.', 'Total: <b>' + eurP_(cur.total) + '</b> (IVA incluido). El día antes te recordamos cómo dejarlo preparado.'], 'Ver mi solicitud', clientUrl_() + '#s=' + cur.token, 'Confirmado');
     }
+    if (estado === 'Hecha' && cur.vale && cur.vale.codigo && !cur.vale.usado) {
+      const vm = valeFind_(cur.vale.codigo);
+      const imp = vm ? r2_(Math.min(Number(vm.saldo), cur.vale.imp || 0)) : 0;
+      if (vm && imp > 0) { vm.saldo = r2_(Number(vm.saldo) - imp); vm.cliente = vm.cliente || cur.cliente; vm.movs = (vm.movs || []).concat([{ at: iso_(), texto: 'Usado en ' + cur.numero + ' (' + cur.nombre + ')', imp: -imp }]); update_('Monedero', vm); }
+      cur.vale.imp = imp; cur.vale.usado = iso_();
+    }
     if (estado === 'Hecha' && cur.cuenta && cur.descuento && /Bienvenida/.test(cur.descuento.n)) {
       const a = read_('Cuentas').find(x => x.id === cur.cuenta);
       if (a && !a.bienvenida) { a.bienvenida = iso_(); a.cliente = cur.cliente || a.cliente; update_('Cuentas', a); }
@@ -486,9 +526,10 @@ const RET_DIAS = { particular: 30, empresa: 90 };   // días que se guardan las 
 const PERMISOS = ['responsable', 'coordinador', 'ver'];
 function permiso_(u) { return PERMISOS.indexOf(u && u.permiso) >= 0 ? u.permiso : 'coordinador'; }
 
-Object.assign(PORTAL_OPEN, { pIncReply: 1, pSign: 1, cFile: 1, cCanjear: 1 });
+Object.assign(PORTAL_OPEN, { pIncReply: 1, pSign: 1, cFile: 1, cCanjear: 1, pVale: 1 });
 Object.assign(PORTAL_ACTIONS, {
   pIncReply: pIncReply_, pSign: pSign_, cFile: cFile_, cCanjear: cCanjear_,
+  clientPreview: clientPreview_, pVale: pVale_,
   cliIncReply: cliIncReply_, cliSign: cliSign_, cliFacturas: cliFacturas_, cliFile: cliFile_, cliPedir: cliPedir_,
   walletList: walletList_, walletSave: walletSave_, walletUse: walletUse_, offerSave: offerSave_, offerSend: offerSend_
 });
@@ -509,7 +550,7 @@ function accClient_(a) {
 }
 function linkOk_(s) { return !s.cerrado || Date.now() <= Date.parse(linkExpires_(s)); }
 function walletOut_(m) {
-  return { id: m.id, tipo: m.tipo, nombre: m.nombre, codigo: m.tipo === 'regalo' ? m.codigo : '', visitas: Number(m.visitas) || 0, usadas: Number(m.usadas) || 0, saldo: Number(m.saldo) || 0, inicial: Number(m.inicial) || 0, caduca: dd_(m.caduca), para: m.para || '', de: m.de || '',
+  return { estado: m.tipo === 'regalo' ? valeEstado_(m) : (Number(m.usadas) >= Number(m.visitas) ? 'Gastado' : 'Activo'), usuario: m.usuario || '', id: m.id, tipo: m.tipo, nombre: m.nombre, codigo: m.tipo === 'regalo' ? m.codigo : '', visitas: Number(m.visitas) || 0, usadas: Number(m.usadas) || 0, saldo: Number(m.saldo) || 0, inicial: Number(m.inicial) || 0, caduca: dd_(m.caduca), para: m.para || '', de: m.de || '',
     movs: (m.movs || []).slice(-10).map(x => ({ at: x.at, texto: x.texto, imp: x.imp || 0 })) };
 }
 function ofertasActivas_() {
@@ -525,7 +566,7 @@ function cMe_(d, u, req) {
   const servs = cid ? read_('Servicios').filter(s => s.cliente === cid && !s.archivado).sort((x, y) => String(y.creado).localeCompare(String(x.creado))).slice(0, 60) : [];
   const inc = cid ? read_('Incidencias').filter(i => i.visible !== false) : [];
   const facturas = cid ? read_('Facturas').filter(f => f.cliente === cid && f.archivo && f.estado !== 'Anulada').sort((x, y) => String(y.fecha).localeCompare(String(x.fecha))) : [];
-  const wallet = read_('Monedero').filter(m => m.activo !== false && ((cid && m.cliente === cid) || m.cuenta === a.id));
+  const wallet = read_('Monedero').filter(m => m.activo !== false && ((cid && m.cliente === cid) || m.cuenta === a.id || (m.usuario && m.usuario === a.email)));
   return {
     cuenta: accOut_(a),
     solicitudes: sols.map(s => ({ t: s.token, numero: s.numero, fecha: s.fecha, resumen: s.resumen, estado: s.estado, total: s.total, dia: dd_(s.dia) })),
@@ -563,13 +604,14 @@ function cFile_(d, u, req) {
 }
 function cCanjear_(d, u, req) {
   const a = csession_(req);
+  noPreview_(a);
   throttle_('gift:' + a.id, 8);
   const code = String(d.codigo || '').toUpperCase().replace(/[^A-Z0-9-]/g, '');
   return locked_(() => {
-    const m = read_('Monedero').find(x => x.tipo === 'regalo' && String(x.codigo).toUpperCase() === code && x.activo !== false);
-    if (!m) fail_('Código no válido. Revísalo o escríbenos.');
-    if (m.cuenta && m.cuenta !== a.id) fail_('Esta tarjeta ya está en otra cuenta.');
-    m.cuenta = a.id; if (!m.cliente && a.cliente) m.cliente = a.cliente;
+    const m = valeFind_(code);
+    valeCheck_(m, a.email);
+    if (m.cuenta && m.cuenta !== a.id) fail_('Este vale ya está en otra cuenta.');
+    m.cuenta = a.id; m.usuario = a.email; if (!m.cliente && a.cliente) m.cliente = a.cliente;
     m.movs = (m.movs || []).concat([{ at: iso_(), texto: 'Añadida a la cuenta de ' + a.nombre }]);
     update_('Monedero', m);
     return walletOut_(m);
@@ -682,7 +724,35 @@ function walletList_(d, u) {
     cupo: (() => { try { return MailApp.getRemainingDailyQuota(); } catch (e) { return 0; } })()
   };
 }
-function giftCode_() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = 'EM-'; for (let i = 0; i < 6; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
+function giftCode_(all) {
+  const y = new Date().getFullYear();
+  let max = 0;
+  all.forEach(m => { const x = String(m.codigo || '').match(/^VR(\d{4})(\d{3,})$/); if (x && Number(x[1]) === y) max = Math.max(max, Number(x[2])); });
+  return 'VR' + y + ('00' + (max + 1)).slice(-3);
+}
+function valeEstado_(m) {
+  if (m.activo === false) return 'Anulado';
+  if (Number(m.saldo) <= 0.004) return 'Usado';
+  if (m.caduca && dd_(m.caduca) < day_()) return 'Caducado';
+  return m.cuenta || m.cliente || m.usuario ? 'Asignado' : 'Sin usar';
+}
+function valeFind_(code) {
+  code = String(code || '').toUpperCase().replace(/[^A-Z0-9-]/g, '');
+  return code ? read_('Monedero').find(x => x.tipo === 'regalo' && String(x.codigo).toUpperCase() === code) : null;
+}
+function valeCheck_(m, email) {
+  if (!m || m.activo === false) fail_('Este código de vale no existe. Revísalo.');
+  if (Number(m.saldo) <= 0.004) fail_('Este vale ya está usado.');
+  if (m.caduca && dd_(m.caduca) < day_()) fail_('Este vale caducó el ' + dd_(m.caduca).split('-').reverse().join('/') + '.');
+  if (email && m.usuario && m.usuario !== email) fail_('Este vale ya lo está usando otra persona.');
+}
+/** Comprueba un vale desde el presupuesto (sin cuenta). */
+function pVale_(d) {
+  throttle_('vale:' + clean_(d.device, 64), 15);
+  const m = valeFind_(d.codigo);
+  valeCheck_(m, clean_(d.email, 120).toLowerCase());
+  return { codigo: m.codigo, saldo: Number(m.saldo), caduca: dd_(m.caduca) };
+}
 function walletSave_(d, u) {
   admin_(u);
   return locked_(() => {
@@ -706,10 +776,14 @@ function walletSave_(d, u) {
     } else {
       const imp = money_(d.saldo);
       if (!(imp > 0)) fail_('Indica el importe de la tarjeta.');
-      let code; do { code = giftCode_(); } while (all.some(x => x.codigo === code));
-      m.codigo = code; m.saldo = imp; m.inicial = imp; m.nombre = 'Tarjeta regalo';
-      m.movs = [{ at: iso_(), texto: 'Tarjeta regalo de ' + eurP_(imp) + (m.de ? ' · de ' + m.de : ''), imp: imp }];
-      if (m.email && mailOk_(m.email)) pmail_(m.email, '🎁 Tienes una tarjeta regalo de Efecto Mariposa', '¡Te han regalado una limpieza!', [(m.para ? 'Hola, ' + esc_(m.para) + ':' : 'Hola:'), (m.de ? esc_(m.de) + ' te regala' : 'Tienes') + ' una tarjeta de <b>' + eurP_(imp) + '</b> para la limpieza de tu autocaravana, camper, caravana o coche.', 'Tu código: <b style="font-size:20px;letter-spacing:2px">' + code + '</b>', 'Pide tu presupuesto, crea tu cuenta y añade el código en «Monedero».' + (m.caduca ? ' Válida hasta el ' + m.caduca.split('-').reverse().join('/') + '.' : '')], 'Usar mi tarjeta', clientUrl_(), 'Tarjeta regalo');
+      let code = String(d.codigo || '').toUpperCase().replace(/[^A-Z0-9-]/g, '');
+      if (code && all.some(x => String(x.codigo).toUpperCase() === code)) fail_('Ya existe un vale con el código ' + code + '.');
+      if (!code) code = giftCode_(all);
+      if (!m.caduca) { const c = new Date(); c.setFullYear(c.getFullYear() + 1); m.caduca = Utilities.formatDate(c, APP.zona, 'yyyy-MM-dd'); }
+      if (m.cliente && !clientById_(read_('Clientes'), m.cliente)) m.cliente = '';
+      m.codigo = code; m.saldo = imp; m.inicial = imp; m.nombre = 'Vale regalo';
+      m.movs = [{ at: iso_(), texto: 'Vale regalo de ' + eurP_(imp) + (m.de ? ' · de ' + m.de : '') + (m.para ? ' · para ' + m.para : ''), imp: imp }];
+      if (m.email && mailOk_(m.email)) pmail_(m.email, '🎁 Tienes un vale regalo de Efecto Mariposa', '¡Te han regalado una limpieza!', [(m.para ? 'Hola, ' + esc_(m.para) + ':' : 'Hola:'), (m.de ? esc_(m.de) + ' te regala' : 'Tienes') + ' un vale de <b>' + eurP_(imp) + '</b> para la limpieza de tu autocaravana, camper, caravana o coche.', 'Tu código: <b style="font-size:20px;letter-spacing:2px">' + code + '</b>', 'Escríbelo al pedir tu presupuesto o guárdalo en tu área de cliente (Monedero) para no perderlo. Válido hasta el ' + m.caduca.split('-').reverse().join('/') + '.'], 'Usar mi vale', clientUrl_(), 'Vale regalo');
     }
     insert_('Monedero', m);
     return Object.assign(walletOut_(m), { codigo: m.codigo });

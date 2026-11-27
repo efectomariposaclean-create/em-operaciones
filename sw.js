@@ -1,6 +1,6 @@
-const CACHE = 'em-ops-3.7.0';
-const SHELL = ['./', 'index.html', 'styles.css?v=3.7.0', 'app.js?v=3.7.0', 'config.js?v=3.7.0', 'manifest.webmanifest',
-  'icons/logo-header.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/favicon.png', 'cliente.html', 'cliente.css?v=3.7.0', 'cliente.js?v=3.7.0', 'icons/watermark.png'];
+const CACHE = 'em-ops-3.8.0';
+const SHELL = ['./', 'index.html', 'styles.css?v=3.8.0', 'app.js?v=3.8.0', 'config.js?v=3.8.0', 'manifest.webmanifest',
+  'icons/logo-header.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/favicon.png', 'cliente.html', 'cliente.css?v=3.8.0', 'cliente.js?v=3.8.0', 'icons/watermark.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));

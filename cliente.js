@@ -20,7 +20,7 @@ async function api(action, data) {
   return j.data;
 }
 function toast(m, err) { const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 3200); }
-function setSession(r) { S.token = r.token; S.cuenta = r.cuenta; LS.set('token', r.token); LS.set('cuenta', r.cuenta); }
+function setSession(r) { S.preview = false; S.token = r.token; S.cuenta = r.cuenta; LS.set('token', r.token); LS.set('cuenta', r.cuenta); }
 function logout(silent) { S.me = null; S.token = ''; S.cuenta = null; LS.del('token'); LS.del('cuenta'); if (!silent) go(''); }
 function go(h) { if (location.hash === '#' + h || (!h && !location.hash)) route(); else location.hash = h; }
 function top(title, sub, back) { return '<div class="top">' + (back != null ? '<a class="ib" href="#' + back + '" aria-label="Volver">‹</a>' : '<img src="' + LOGO + '" alt="Efecto Mariposa">') + '<div class="tt"><small>' + esc(sub || '') + '</small><b>' + esc(title) + '</b></div>' + (S.token && back == null ? '<a class="ib" href="#area" aria-label="Mi área">👤</a>' : '') + '</div>'; }
@@ -145,15 +145,18 @@ function viewData() {
     '<label class="f">Correo · ahí te llega tu enlace<input class="in" id="email" type="email" autocomplete="email" value="' + esc(a.email || d.email || '') + '"' + (a.email ? ' readonly' : '') + '></label>' +
     '<label class="f">Municipio<input class="in" id="muni" value="' + esc(d.municipio || '') + '" placeholder="San Martín de la Vega"></label>' +
     '<label class="f">Marca y modelo (opcional)<input class="in" id="modelo" placeholder="Adria Coral 670"></label>' +
+    '<label class="f">¿Tienes un vale regalo? (opcional)<div style="display:flex;gap:8px;margin-top:5px"><input class="in" id="vale" placeholder="VR2026001" style="margin:0;text-transform:uppercase" value="' + esc(LS.get('vale', '')) + '"><button type="button" class="btn sm ghost" id="valeb">Comprobar</button></div></label><div id="valei" class="small" style="color:var(--green)"></div>' +
     '<label class="f">¿Algo que debamos saber?<textarea class="in" id="notas" placeholder="Manchas, olor a humedad, pelo de perro…"></textarea></label>' +
     '<label class="ck"><input type="checkbox" id="priv"> <span>He leído y acepto la política de privacidad. Usamos tus datos solo para gestionar tu presupuesto y tus servicios.</span></label>' +
     (S.token ? '' : '<label class="ck"><input type="checkbox" id="ofer"> <span>Quiero recibir ofertas exclusivas para clientes por correo.</span></label>') +
     '</div>' +
     '<div class="card"><details><summary>Cómo dejarlo preparado el día del servicio</summary><ul class="prep">' + (q.tipo === 'coche' ? ['Maletero y guantera vacíos', 'Sillitas de niño retiradas', 'Objetos de valor fuera', 'Llaves disponibles a la hora acordada'] : ['Depósitos de aguas grises y negras vaciados', 'Ropa, comida y objetos personales fuera', 'Nevera vacía y desconectada', '1,5 m libres alrededor y toldo recogido']).map(x => '<li>' + esc(x) + '</li>').join('') + '</ul><p class="note" style="margin-top:6px">¿Sin agua ni luz? No pasa nada: llevamos generador y depósito propios. Según el servicio puede llevar un pequeño suplemento; te lo confirmamos antes.</p></details></div>' +
     '</div><div class="bar"><div class="in2"><button class="btn" id="send">Enviar y añadir fotos</button></div></div>';
+  $('#valeb').onclick = async () => { const c = $('#vale').value.trim(); if (!c) return; try { const r = await api('pVale', { codigo: c, email: $('#email').value.trim(), device: device }); $('#valei').style.color = 'var(--green)'; $('#valei').textContent = '✓ Vale ' + r.codigo + ' · saldo ' + eur(r.saldo) + ' · válido hasta el ' + fday(r.caduca) + '. Se descuenta del total.'; } catch (e) { $('#valei').style.color = 'var(--bad)'; $('#valei').textContent = e.message; } };
   $('#send').onclick = async () => {
     const v = id => $('#' + id) ? $('#' + id).value.trim() : '';
-    const body = { nombre: v('nombre'), telefono: v('tel'), email: v('email'), municipio: v('muni'), modelo: v('modelo'), notas: v('notas'), privacidad: $('#priv').checked, ofertas: !!($('#ofer') && $('#ofer').checked), sel: selOf(q), device: device };
+    const body = { nombre: v('nombre'), telefono: v('tel'), email: v('email'), municipio: v('muni'), modelo: v('modelo'), notas: v('notas'), privacidad: $('#priv').checked, ofertas: !!($('#ofer') && $('#ofer').checked), sel: selOf(q), device: device, vale: v('vale').toUpperCase() };
+    LS.set('vale', '');
     if (!body.privacidad) return toast('Marca la casilla de privacidad para continuar.', true);
     LS.set('datos', { nombre: body.nombre, telefono: body.telefono, email: body.email, municipio: body.municipio });
     const b = $('#send'); busy(b, true, 'Enviando…');
@@ -210,7 +213,8 @@ async function viewSol(t) {
   const lines = s.lineas.map(l => '<div><span>' + esc(l.c) + '</span><b>' + (l.imp ? eur(l.imp) : 'Gratis') + '</b></div>').join('') +
     (s.descuento ? '<div class="d"><span>' + esc(s.descuento.n) + ' (−' + s.descuento.pct + ' %)</span><b>−' + eur(s.descuento.imp) + '</b></div>' : '') +
     '<div class="small muted" style="border:0"><span>Base + IVA 21 %</span><span>' + eur(s.total / 1.21) + ' + ' + eur(s.total - s.total / 1.21) + '</span></div>' +
-    '<div class="tt"><span>Total</span><b>' + eur(s.total) + '</b></div>';
+    '<div class="tt"><span>Total</span><b>' + eur(s.total) + '</b></div>' +
+    (s.vale && s.vale.imp ? '<div class="d" style="border:0;margin-top:6px"><span>🎁 Vale regalo ' + esc(s.vale.codigo) + '</span><b>−' + eur(s.vale.imp) + '</b></div><div style="border:0"><span><b>A pagar</b></span><b style="font-size:17px">' + eur(s.pagar) + '</b></div>' : '');
   let h = '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><b style="color:var(--navy)">' + esc(s.resumen) + '</b><div class="small muted">' + esc(s.vehiculo) + ' · ' + esc(s.lugar) + '</div></div><span class="st ' + chipCls + '">' + esc(s.estado) + '</span></div>' +
     (closed ? '' : '<div class="steps" style="margin-top:10px">' + STEPS.map((x, i) => '<div class="s ' + (i < idx || s.estado === 'Hecha' ? 'done' : i === idx ? 'now' : '') + '"><span class="k">' + (i < idx || s.estado === 'Hecha' ? '✓' : i + 1) + '</span><div><b>' + esc(x[0]) + '</b><span>' + esc(x[1]) + '</span></div></div>').join('') + '</div>') + '</div>';
   h += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="color:var(--navy)">' + (s.revisado ? 'Presupuesto revisado' : 'Presupuesto calculado') + '</b><span class="small muted">' + esc(s.numero) + '</span></div><div class="lines">' + lines + '</div>' +
@@ -274,7 +278,7 @@ async function viewMagic(m) {
 }
 async function viewArea(tab) {
   if (!S.token) return go('entrar');
-  tab = tab || LS.get('tab', 'inicio'); LS.set('tab', tab);
+  tab = tab || LS.get('tab', 'inicio'); if (!S.preview) LS.set('tab', tab);
   if (!S.me) APP.innerHTML = top('Mi área', 'Efecto Mariposa', null) + '<div class="spin"></div>';
   try { S.me = await api('cMe', {}); } catch (e) { if (!S.me) return viewError(e.message); }
   const me = S.me;
@@ -299,8 +303,8 @@ async function viewArea(tab) {
   } else if (tab === 'monedero') {
     const bonos = me.monedero.filter(m => m.tipo === 'bono'), gifts = me.monedero.filter(m => m.tipo === 'regalo');
     h = bonos.map(m => '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><div><span class="small muted">MI BONO</span><div style="font-weight:700;color:var(--navy);font-size:15px">' + esc(m.nombre) + ' · ' + m.visitas + ' visitas</div></div><span class="st ok">Quedan ' + (m.visitas - m.usadas) + '</span></div><div style="display:flex;gap:6px;margin-top:10px">' + Array.from({ length: m.visitas }, (_, i) => '<div style="flex:1;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:' + (i < m.usadas ? 'var(--green);color:#fff' : '#eef2f4;color:#5b7079') + '">' + (i < m.usadas ? '✓' : i + 1) + '</div>').join('') + '</div>' + (m.caduca ? '<p class="small muted" style="margin-top:6px">Válido hasta el ' + fd(m.caduca) + '</p>' : '') + '</div>').join('') +
-      gifts.map(m => '<div class="promo"><h3>Tarjeta regalo · ' + eur(m.saldo) + '</h3><p>' + esc(m.codigo) + (m.de ? ' · de ' + esc(m.de) : '') + (m.caduca ? ' · hasta el ' + fd(m.caduca) : '') + '<br>Dínoslo al pedir tu servicio y lo descontamos.</p></div>').join('') +
-      '<div class="card"><b style="color:var(--navy)">¿Tienes una tarjeta regalo?</b><div style="display:flex;gap:8px;margin-top:8px"><input class="in" id="gc" placeholder="EM-XXXXXX" style="margin:0;text-transform:uppercase"><button class="btn sm" id="gcb">Añadir</button></div></div>' +
+      gifts.map(m => '<div class="promo"' + (m.estado === 'Usado' || m.estado === 'Caducado' ? ' style="opacity:.55"' : '') + '><div class="badge" style="font-size:15px">' + eur(m.saldo).replace(',00', '') + '</div><h3>🎁 Vale regalo ' + esc(m.codigo) + '</h3><p>' + (m.de ? 'De ' + esc(m.de) + ' · ' : '') + (m.estado === 'Usado' ? 'Ya usado' : m.estado === 'Caducado' ? 'Caducado' : 'Saldo ' + eur(m.saldo) + ' de ' + eur(m.inicial)) + (m.caduca ? ' · válido hasta el ' + fd(m.caduca) : '') + '<br>Escribe el código al pedir tu presupuesto y lo descontamos del total.</p></div>').join('') +
+      '<div class="card"><b style="color:var(--navy)">¿Tienes un vale regalo?</b><p class="small muted" style="margin-top:2px">Guárdalo aquí para no perderlo.</p><div style="display:flex;gap:8px;margin-top:8px"><input class="in" id="gc" placeholder="VR2026001" style="margin:0;text-transform:uppercase"><button class="btn sm" id="gcb">Añadir</button></div></div>' +
       '<div class="card"><b style="color:var(--navy)">Bonos</b><p class="small muted" style="margin:4px 0 6px">Varias limpiezas al año con descuento. Pagas el 50 % al contratar y el resto por visita.</p>' + [['Escapadas', '2 visitas', '−7 %'], ['Temporadas', '4 visitas', '−10 %'], ['Siempre a punto', '6 visitas', '−12 %']].map(b => '<div class="li"><div class="g"><b>' + b[0] + '</b><span>' + b[1] + '</span></div><span class="st ok">' + b[2] + '</span></div>').join('') + '<a class="btn ghost" style="margin-top:8px" href="#nuevo">Pide presupuesto y dinos que quieres bono</a></div>';
   } else {
     h = '<div class="card" style="display:flex;flex-direction:column;gap:10px"><b style="color:var(--navy)">' + esc(me.cuenta.nombre) + '</b><div class="small muted">' + esc(me.cuenta.email) + ' · ' + esc(me.cuenta.telefono || '') + '</div>' +
@@ -308,10 +312,10 @@ async function viewArea(tab) {
       '<details><summary>Cambiar contraseña</summary><label class="f" style="margin-top:8px">Actual<input class="in" type="password" id="pa"></label><label class="f" style="margin-top:8px">Nueva<input class="in" type="password" id="pn" autocomplete="new-password"></label><button class="btn sm" id="pwb" style="margin-top:8px">Guardar</button></details>' +
       '<button class="btn ghost" id="out">Cerrar sesión</button></div><p class="small muted center">¿Dudas? Llámanos al <a href="tel:614065526">614 065 526</a></p>';
   }
-  APP.innerHTML = top('Hola, ' + me.cuenta.nombre.split(' ')[0], 'Mi área', null) + '<div class="pad"><div class="seg">' + TABS.map(t => '<button data-tab="' + t[0] + '" class="' + (t[0] === tab ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div>' + h + '</div>';
+  APP.innerHTML = top('Hola, ' + me.cuenta.nombre.split(' ')[0], S.preview ? 'Vista de dirección · solo lectura' : 'Mi área', null) + '<div class="pad">' + (S.preview ? '<p class="note warn">👁️ Estás viendo el área tal como la ve este cliente. No se puede cambiar nada.</p>' : '') + '<div class="seg">' + TABS.map(t => '<button data-tab="' + t[0] + '" class="' + (t[0] === tab ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div>' + h + '</div>';
   $$('[data-tab]').forEach(b => b.onclick = () => viewArea(b.dataset.tab));
   $$('[data-file]').forEach(el => el.onclick = async () => { toast('Preparando el PDF…'); try { const x = await api('cFile', { kind: el.dataset.file, id: el.dataset.id }); const a = document.createElement('a'); a.href = x.data; a.download = x.name; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { toast(e.message, true); } });
-  if ($('#gcb')) $('#gcb').onclick = async () => { try { await api('cCanjear', { codigo: $('#gc').value }); toast('¡Tarjeta añadida!'); viewArea('monedero'); } catch (e) { toast(e.message, true); } };
+  if ($('#gcb')) $('#gcb').onclick = async () => { try { await api('cCanjear', { codigo: $('#gc').value }); toast('¡Vale añadido!'); viewArea('monedero'); } catch (e) { toast(e.message, true); } };
   if ($('#of')) $('#of').onchange = async e => { try { await api('cSave', { ofertas: e.target.checked }); toast('Guardado'); } catch (x) { toast(x.message, true); } };
   if ($('#pwb')) $('#pwb').onclick = async () => { try { await api('cSave', { actual: $('#pa').value, password: $('#pn').value }); toast('Contraseña cambiada'); } catch (x) { toast(x.message, true); } };
   if ($('#out')) $('#out').onclick = () => { S.me = null; logout(); };
@@ -324,6 +328,7 @@ function route() {
   if (h.indexOf('s=') === 0) return viewSol(h.slice(2));
   if (h.indexOf('fotos=') === 0) return viewPhotos(h.slice(6));
   if (h.indexOf('m=') === 0) return viewMagic(h.slice(2));
+  if (h.indexOf('ver=') === 0) { S.preview = true; S.token = h.slice(4); S.me = null; history.replaceState(null, '', location.pathname + '#area'); return viewArea('inicio'); }
   if (h.indexOf('info=') === 0) return viewInfo(h.slice(5));
   if (h === 'presupuesto') return viewQuote();
   if (h === 'nuevo') { S.q = S.q || defQ(); return go('presupuesto'); }
