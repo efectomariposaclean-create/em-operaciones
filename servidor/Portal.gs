@@ -210,8 +210,29 @@ function cSave_(d, u, req) {
   noPreview_(a);
   return locked_(() => {
     if (d.ofertas !== undefined) a.ofertas = !!d.ofertas;
-    if (d.telefono !== undefined) a.telefono = clean_(d.telefono, 30);
+    const antes = { telefono: a.telefono, email: a.email, nombre: a.nombre };
+    if (d.telefono !== undefined) { const t = clean_(d.telefono, 30); if (norm_(t).length < 9) fail_('Escribe un teléfono válido.'); a.telefono = t; }
     if (d.nombre) a.nombre = clean_(d.nombre, 80);
+    if (d.email !== undefined) {
+      const e = clean_(d.email, 120).toLowerCase();
+      if (!mailOk_(e)) fail_('Escribe un correo válido.');
+      if (e !== a.email && read_('Cuentas').some(x => x.id !== a.id && x.email === e)) fail_('Ya hay otra cuenta con ese correo.');
+      a.email = e;
+    }
+    // si es cliente, sus datos de contacto se actualizan también en su ficha
+    const cambios = ['telefono', 'email', 'nombre'].filter(k => antes[k] !== a[k]);
+    if (cambios.length) {
+      if (!a.cliente) accClient_(a);
+      const c = a.cliente ? read_('Clientes').find(x => x.id === a.cliente) : null;
+      if (c) {
+        const txt = cambios.map(k => ({ telefono: 'teléfono', email: 'correo', nombre: 'nombre' }[k] + ': ' + (antes[k] || '—') + ' → ' + a[k])).join(' · ');
+        if (cambios.indexOf('telefono') >= 0) c.telefono = a.telefono;
+        if (cambios.indexOf('email') >= 0) c.email = [a.email].concat(emailsOf_(c).filter(x => x !== antes.email && x !== a.email)).join(', ');
+        c.crm = c.crm || {};
+        c.crm.notas = (c.crm.notas || []).concat([note_(null, 'El cliente ha cambiado sus datos desde su área: ' + txt, 'Nota')]);
+        update_('Clientes', c);
+      }
+    }
     if (d.password) {
       if (pwHash_(String(d.actual || ''), a.sal) !== a.hash) fail_('La contraseña actual no es correcta.');
       if (String(d.password).length < 8) fail_('La contraseña debe tener al menos 8 caracteres.');

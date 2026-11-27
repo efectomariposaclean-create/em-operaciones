@@ -307,7 +307,12 @@ async function viewArea(tab) {
       '<div class="card"><b style="color:var(--navy)">¿Tienes un vale regalo?</b><p class="small muted" style="margin-top:2px">Guárdalo aquí para no perderlo.</p><div style="display:flex;gap:8px;margin-top:8px"><input class="in" id="gc" placeholder="VR2026001" style="margin:0;text-transform:uppercase"><button class="btn sm" id="gcb">Añadir</button></div></div>' +
       '<div class="card"><b style="color:var(--navy)">Bonos</b><p class="small muted" style="margin:4px 0 6px">Varias limpiezas al año con descuento. Pagas el 50 % al contratar y el resto por visita.</p>' + [['Escapadas', '2 visitas', '−7 %'], ['Temporadas', '4 visitas', '−10 %'], ['Siempre a punto', '6 visitas', '−12 %']].map(b => '<div class="li"><div class="g"><b>' + b[0] + '</b><span>' + b[1] + '</span></div><span class="st ok">' + b[2] + '</span></div>').join('') + '<a class="btn ghost" style="margin-top:8px" href="#nuevo">Pide presupuesto y dinos que quieres bono</a></div>';
   } else {
-    h = '<div class="card" style="display:flex;flex-direction:column;gap:10px"><b style="color:var(--navy)">' + esc(me.cuenta.nombre) + '</b><div class="small muted">' + esc(me.cuenta.email) + ' · ' + esc(me.cuenta.telefono || '') + '</div>' +
+    h = '<div class="card" style="display:flex;flex-direction:column;gap:10px"><b style="color:var(--navy)">Mis datos</b>' +
+      '<label class="f">Nombre y apellidos<input class="in" id="dn" value="' + esc(me.cuenta.nombre) + '"></label>' +
+      '<label class="f">Teléfono<input class="in" id="dt" type="tel" value="' + esc(me.cuenta.telefono || '') + '"></label>' +
+      '<label class="f">Correo (con él entras)<input class="in" id="de" type="email" value="' + esc(me.cuenta.email) + '"></label>' +
+      '<button class="btn sm" id="dsv">Guardar mis datos</button><p class="small muted" style="margin-top:-4px">Se actualizan también en nuestra ficha, para avisarte siempre donde toca.</p></div>' +
+      '<div class="card" style="display:flex;flex-direction:column;gap:10px"><b style="color:var(--navy)">Preferencias</b>' +
       '<label class="ck"><input type="checkbox" id="of"' + (me.cuenta.ofertas ? ' checked' : '') + '> <span>Recibir ofertas exclusivas por correo</span></label>' +
       '<details><summary>Cambiar contraseña</summary><label class="f" style="margin-top:8px">Actual<input class="in" type="password" id="pa"></label><label class="f" style="margin-top:8px">Nueva<input class="in" type="password" id="pn" autocomplete="new-password"></label><button class="btn sm" id="pwb" style="margin-top:8px">Guardar</button></details>' +
       '<button class="btn ghost" id="out">Cerrar sesión</button></div><p class="small muted center">¿Dudas? Llámanos al <a href="tel:614065526">614 065 526</a></p>';
@@ -317,6 +322,7 @@ async function viewArea(tab) {
   $$('[data-file]').forEach(el => el.onclick = async () => { toast('Preparando el PDF…'); try { const x = await api('cFile', { kind: el.dataset.file, id: el.dataset.id }); const a = document.createElement('a'); a.href = x.data; a.download = x.name; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { toast(e.message, true); } });
   if ($('#gcb')) $('#gcb').onclick = async () => { try { await api('cCanjear', { codigo: $('#gc').value }); toast('¡Vale añadido!'); viewArea('monedero'); } catch (e) { toast(e.message, true); } };
   if ($('#of')) $('#of').onchange = async e => { try { await api('cSave', { ofertas: e.target.checked }); toast('Guardado'); } catch (x) { toast(x.message, true); } };
+  if ($('#dsv')) $('#dsv').onclick = async () => { try { const r = await api('cSave', { nombre: $('#dn').value.trim(), telefono: $('#dt').value.trim(), email: $('#de').value.trim() }); S.cuenta = r.cuenta; LS.set('cuenta', r.cuenta); toast('Datos guardados'); S.me = null; viewArea('cuenta'); } catch (x) { toast(x.message, true); } };
   if ($('#pwb')) $('#pwb').onclick = async () => { try { await api('cSave', { actual: $('#pa').value, password: $('#pn').value }); toast('Contraseña cambiada'); } catch (x) { toast(x.message, true); } };
   if ($('#out')) $('#out').onclick = () => { S.me = null; logout(); };
 }
