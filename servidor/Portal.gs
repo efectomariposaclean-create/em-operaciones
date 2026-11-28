@@ -14,6 +14,7 @@ const P_CARS = [['Turismo pequeño',[42.35,72.60,90.75,121.00]],['Turismo median
 const P_CSRV = ['Interior básico','Interior + exterior básico','Interior intensivo','Intensivo + exterior básico'];
 const P_CEXT = { tap: ['Tapicería completa', 96.80], mal: ['Maletero profundo', 24.20], pel: ['Eliminación de pelos', 30.25] };
 const P_SEAT = 24.20;
+const P_XT = { oz: ['Ozono', 49], pl: ['Recuperación e hidratación de plásticos exteriores', 59], fr: ['Frigorífico con exceso de suciedad', 24.20] };
 const P_AGES = { 0: 'Hasta 5 años', 10: 'De 5 a 10 años', 25: 'Más de 10 años' };
 const P_STATES = ['Habitual', 'Suciedad acumulada', 'Recuperación'];
 const P_PLACES = ['Recinto de Alcalá de Henares', 'A domicilio', 'Base de San Martín de la Vega'];
@@ -53,11 +54,14 @@ function precio_(sel) {
     add(['Mantenimiento', 'Interior estándar', 'Interior intensivo'][srv] + ' · ' + P_NAMES[s.v], r[srv]);
     if (srv && a) add('Antigüedad ' + P_AGES[a].toLowerCase() + ' (+' + a + ' %)', r[srv] * a / 100);
     if (ext) add('Exterior ' + (ext === 1 ? 'básico' : 'intensivo'), r[ext + 2]);
-    const seat = Number(s.seat) || 0, bed = Number(s.bed) || 0, xt = Array.isArray(s.xt) ? s.xt.map(Number) : [];
-    if ([0, 39, 69, 129].indexOf(seat) < 0 || [0, 69, 99].indexOf(bed) < 0 || xt.some(x => [49, 59, 39].indexOf(x) < 0)) fail_('Selección no válida.');
+    const seat = Number(s.seat) || 0, bed = Number(s.bed) || 0;
+    const OLD = { 49: 'oz', 59: 'pl', 39: 'fr' };
+    const xt = (Array.isArray(s.xt) ? s.xt : []).map(x => OLD[x] || String(x));
+    if ([0, 39, 69, 129].indexOf(seat) < 0 || [0, 69, 99].indexOf(bed) < 0 || xt.some(x => !P_XT[x])) fail_('Selección no válida.');
     if (!inten) add({ 39: 'Tapicería: un asiento', 69: 'Tapicería: asientos de cabina', 129: 'Tapicería: cuatro plazas' }[seat] || '', seat);
     add({ 69: 'Colchón individual', 99: 'Colchón doble' }[bed] || '', bed);
-    xt.forEach(x => add({ 49: 'Ozono', 59: 'Tratamiento de plásticos', 39: 'Frigorífico a fondo' }[x], inten && x === 39 ? 0 : x));
+    if (inten) L.push({ c: 'Ozono (incluido en la intensiva)', imp: 0 });
+    xt.forEach(x => { if (x === 'oz' && inten) return; add(P_XT[x][0] + (x === 'pl' && a === 25 ? ' (a valorar con tus fotos: si no se puede recuperar, no se cobra)' : ''), P_XT[x][1]); });
     if (Number(s.w) === 1) add('A domicilio (+10 %)', L.reduce((t, l) => t + l.imp, 0) * 0.1);
     resumen = P_NAMES[s.v] + ' · ' + ['Mantenimiento', 'Estándar', 'Intensiva'][srv] + (ext ? ' + exterior' : '');
   }
@@ -168,6 +172,7 @@ function pRegister_(d) {
     const cl = clients.find(c => c.tipo === 'particular' && ((tel && norm_(c.telefono) === norm_(tel)) || emailsOf_(c).indexOf(mail) >= 0));
     const a = { id: 'a-' + uid_().slice(0, 8), email: mail, nombre: nombre, telefono: tel, hash: pwHash_(pw, sal), sal: sal, tipo: 'particular', cliente: cl ? cl.id : '', contacto: sol ? sol.contacto : '', rol: 'titular', ofertas: !!d.ofertas, bienvenida: '', tokenV: 1, activo: true, creado: iso_(), ultimo: iso_() };
     insert_('Cuentas', a);
+    if (cl && fillFicha_(cl, a)) update_('Clientes', cl);
     read_('Solicitudes').filter(s => s.email === mail && !s.cuenta).forEach(s => {
       s.cuenta = a.id;
       if (['Recibida', 'Presupuesto revisado'].indexOf(s.estado) >= 0) recalc_(s, a);
@@ -561,17 +566,27 @@ function portalMigrate_() {
   } catch (e) { console.error('Trigger limpiarFotos: ' + e); }
 }
 
+function fillFicha_(c, a) {
+  const add = [];
+  if (!c.telefono && a.telefono) { c.telefono = a.telefono; add.push('teléfono ' + a.telefono); }
+  if (!emailsOf_(c).length && a.email) { c.email = a.email; add.push('correo ' + a.email); }
+  if (!add.length) return false;
+  c.crm = c.crm || {};
+  c.crm.notas = (c.crm.notas || []).concat([note_(null, 'Ha creado su cuenta en el área de clientes. Se añade a la ficha: ' + add.join(' y ') + '.', 'Nota')]);
+  return true;
+}
 function accClient_(a) {
   if (a.cliente) return a.cliente;
   const cl = read_('Clientes').find(c => c.tipo === 'particular' && ((a.telefono && norm_(c.telefono) === norm_(a.telefono)) || emailsOf_(c).indexOf(a.email) >= 0));
   if (!cl) return '';
-  locked_(() => { const x = read_('Cuentas').find(y => y.id === a.id); if (x && !x.cliente) { x.cliente = cl.id; update_('Cuentas', x); } });
+  locked_(() => { const x = read_('Cuentas').find(y => y.id === a.id); if (x && !x.cliente) { x.cliente = cl.id; update_('Cuentas', x); } const c = read_('Clientes').find(y => y.id === cl.id); if (c && fillFicha_(c, a)) update_('Clientes', c); });
   a.cliente = cl.id;
   return cl.id;
 }
 function linkOk_(s) { return !s.cerrado || Date.now() <= Date.parse(linkExpires_(s)); }
 function walletOut_(m) {
-  return { estado: m.tipo === 'regalo' ? valeEstado_(m) : (Number(m.usadas) >= Number(m.visitas) ? 'Gastado' : 'Activo'), usuario: m.usuario || '', id: m.id, tipo: m.tipo, nombre: m.nombre, codigo: m.tipo === 'regalo' ? m.codigo : '', visitas: Number(m.visitas) || 0, usadas: Number(m.usadas) || 0, saldo: Number(m.saldo) || 0, inicial: Number(m.inicial) || 0, caduca: dd_(m.caduca), para: m.para || '', de: m.de || '',
+  const tot = Number(m.total) || 0, pag = Number(m.pagado) || 0, rest = Math.max(1, (Number(m.visitas) || 0) - (Number(m.usadas) || 0));
+  return { estado: m.tipo === 'regalo' ? valeEstado_(m) : bonoEstado_(m), total: tot, pagado: pag, ref: m.ref || '', matricula: m.matricula || '', comp: m.comp || null, porVisita: tot ? r2_(Math.max(0, tot - pag) / rest) : 0, usuario: m.usuario || '', id: m.id, tipo: m.tipo, nombre: m.nombre, codigo: m.tipo === 'regalo' ? m.codigo : '', visitas: Number(m.visitas) || 0, usadas: Number(m.usadas) || 0, saldo: Number(m.saldo) || 0, inicial: Number(m.inicial) || 0, caduca: dd_(m.caduca), para: m.para || '', de: m.de || '',
     movs: (m.movs || []).slice(-10).map(x => ({ at: x.at, texto: x.texto, imp: x.imp || 0 })) };
 }
 function ofertasActivas_() {
@@ -597,6 +612,7 @@ function cMe_(d, u, req) {
     }),
     facturas: facturas.map(f => ({ id: f.id, numero: f.numero, fecha: dd_(f.fecha), total: Number(f.total) || 0, estado: f.estado })),
     monedero: wallet.map(walletOut_),
+    pago: wallet.some(m => m.tipo === 'bono' && m.estado === 'Pendiente de pago') ? pagoInfo_() : null,
     ofertas: ofertasActivas_()
   };
 }
@@ -793,6 +809,8 @@ function walletSave_(d, u) {
       if (!clientById_(read_('Clientes'), m.cliente)) fail_('Elige el cliente del bono.');
       m.nombre = clean_(d.nombre, 60) || 'Bono';
       m.visitas = Math.max(1, Math.min(24, Number(d.visitas) || (BONOS_P[m.nombre] || [4])[0]));
+      m.estado = 'Activo'; m.total = money_(d.total) || 0; m.matricula = clean_(d.matricula, 20).toUpperCase();
+      if (!m.caduca) { const c = new Date(); c.setFullYear(c.getFullYear() + 1); m.caduca = Utilities.formatDate(c, APP.zona, 'yyyy-MM-dd'); }
       m.movs = [{ at: iso_(), texto: 'Bono ' + m.nombre + ' de ' + m.visitas + ' visitas' }];
     } else {
       const imp = money_(d.saldo);
@@ -818,6 +836,7 @@ function walletUse_(d, u) {
     if (!m) fail_('No encontrado.');
     const nota = clean_(d.nota, 200);
     if (m.tipo === 'bono') {
+      if (m.estado === 'Pendiente de pago') fail_('Este bono aún no está activo: falta registrar el primer pago.');
       if (Number(m.usadas) >= Number(m.visitas)) fail_('El bono ya no tiene visitas.');
       m.usadas = Number(m.usadas || 0) + 1;
       m.movs = (m.movs || []).concat([{ at: iso_(), texto: 'Visita ' + m.usadas + ' de ' + m.visitas + (nota ? ' · ' + nota : '') }]);
@@ -885,4 +904,95 @@ function limpiarFotos() {
   });
   console.log('Fotos borradas: ' + n);
   return n;
+}
+
+/* ================================================================== */
+/* Bonos desde el área del cliente: calcular, pedir, pagar y activar   */
+/* El bono solo se activa cuando dirección confirma el primer pago.    */
+/* ================================================================== */
+
+const BONO_COMPO = {
+  estandar:  { Escapadas: [[1, 2]], Temporadas: [[1, 4]], 'Siempre a punto': [[1, 2], [0, 4]] },
+  intensiva: { Escapadas: [[2, 2]], Temporadas: [[2, 2], [1, 2]], 'Siempre a punto': [[2, 2], [0, 4]] }
+};
+const BONO_DTO = { Escapadas: 7, Temporadas: 10, 'Siempre a punto': 12 };
+const SRV_N = ['Mantenimiento', 'Limpieza estándar', 'Limpieza intensiva'];
+Object.assign(PORTAL_OPEN, { cBonoPedir: 1, cBonoAviso: 1 });
+Object.assign(PORTAL_ACTIONS, { cBonoPedir: cBonoPedir_, cBonoAviso: cBonoAviso_, walletPago: walletPago_ });
+
+function bonoCalc_(d) {
+  const r = P_RATES[Number(d.v)], a = Number(d.a) || 0, base = d.base === 'intensiva' ? 'intensiva' : 'estandar', comp = BONO_COMPO[base][d.bono];
+  if (!r || !comp || [0, 10, 25].indexOf(a) < 0) fail_('Selección no válida.');
+  let bruto = 0;
+  const lineas = comp.map(c => { const unit = r2_(r[c[0]] * (c[0] ? 1 + a / 100 : 1)); bruto += unit * c[1]; return { n: c[1], srv: SRV_N[c[0]], unit: unit }; });
+  bruto = r2_(bruto);
+  const pct = BONO_DTO[d.bono], total = r2_(bruto * (1 - pct / 100));
+  return { vehiculo: P_NAMES[Number(d.v)], antiguedad: a, base: base, bono: d.bono, visitas: comp.reduce((t, c) => t + c[1], 0), comp: lineas, bruto: bruto, pct: pct, total: total, primero: r2_(total / 2) };
+}
+function bonoEstado_(m) {
+  if (m.activo === false) return 'Anulado';
+  if (m.estado === 'Pendiente de pago') return 'Pendiente de pago';
+  if (Number(m.usadas) >= Number(m.visitas)) return 'Gastado';
+  if (m.caduca && dd_(m.caduca) < day_()) return 'Caducado';
+  return 'Activo';
+}
+function pagoInfo_() {
+  const e = emisor_();
+  return { bizum: typeof BIZUM_PAGO !== 'undefined' ? BIZUM_PAGO : '', iban: e.iban || '', titular: e.titular || e.nombre || 'Efecto Mariposa' };
+}
+function cBonoPedir_(d, u, req) {
+  const a = csession_(req);
+  noPreview_(a);
+  throttle_('bono:' + a.id, 6);
+  if (!d.acepto) fail_('Acepta las condiciones del bono para continuar.');
+  const calc = bonoCalc_(d), mat = clean_(d.matricula, 20).toUpperCase();
+  if (!mat) fail_('Escribe la matrícula: el bono va unido a ese vehículo.');
+  const cid = accClient_(a);
+  return locked_(() => {
+    const all = read_('Monedero'), y = new Date().getFullYear();
+    let max = 0;
+    all.forEach(m => { const x = String(m.ref || '').match(/^B(\d{4})-(\d+)$/); if (x && Number(x[1]) === y) max = Math.max(max, Number(x[2])); });
+    const ref = 'B' + y + '-' + ('00' + (max + 1)).slice(-3);
+    const m = { id: 'w-' + uid_().slice(0, 8), tipo: 'bono', cliente: cid, cuenta: a.id, nombre: calc.bono, codigo: '', visitas: calc.visitas, usadas: 0, saldo: 0, inicial: 0, caduca: '', para: '', de: '', email: a.email, notas: clean_(d.modelo, 80), creado: iso_(), activo: true, usuario: a.email,
+      total: calc.total, pagado: 0, ref: ref, matricula: mat, comp: calc, estado: 'Pendiente de pago',
+      movs: [{ at: iso_(), texto: 'Pedido desde el área de cliente: ' + calc.bono + ' (' + (calc.base === 'intensiva' ? 'intensivo' : 'estándar') + ') · ' + calc.vehiculo + ' ' + mat + ' · ' + eurP_(calc.total) }] };
+    insert_('Monedero', m);
+    const pi = pagoInfo_();
+    pmail_(a.email, 'Tu bono ' + calc.bono + ' · ' + ref, 'Tu bono está reservado', ['Hola, ' + esc_(String(a.nombre).split(' ')[0]) + ':', 'Has pedido el bono <b>' + esc_(calc.bono) + '</b> para tu ' + esc_(calc.vehiculo) + ' (' + esc_(mat) + '): ' + calc.visitas + ' visitas por <b>' + eurP_(calc.total) + '</b>.', 'Para activarlo, paga el primer 50 %: <b>' + eurP_(calc.primero) + '</b>', 'Bizum: <b>' + esc_(pi.bizum) + '</b>' + (pi.iban ? '<br>Transferencia: <b>' + esc_(pi.iban) + '</b> · ' + esc_(pi.titular) : '') + '<br>Concepto: <b>' + ref + '</b>', 'En cuanto lo recibamos, lo activamos y te avisamos. El resto lo pagas poco a poco en cada visita.'], 'Ver mi monedero', clientUrl_() + '#area', 'Bono ' + ref);
+    pmail_(ownerMail_(), 'Nuevo bono pedido · ' + a.nombre + ' · ' + ref, 'Bono pedido desde la app', ['<b>' + esc_(a.nombre) + '</b> (' + esc_(a.telefono || a.email) + ') pide <b>' + esc_(calc.bono) + '</b> ' + (calc.base === 'intensiva' ? 'intensivo' : 'estándar') + ' para ' + esc_(calc.vehiculo) + ' ' + esc_(mat) + '.', 'Total ' + eurP_(calc.total) + ' · primer pago ' + eurP_(calc.primero) + ' · concepto ' + ref + '.', 'Cuando te llegue el pago, regístralo en Más → Bonos y ofertas y se activa solo.'], 'Abrir Bonos y ofertas', APP.appUrl + '#/monedero', 'Bono');
+    return walletOut_(m);
+  });
+}
+function cBonoAviso_(d, u, req) {
+  const a = csession_(req);
+  noPreview_(a);
+  throttle_('bonoav:' + a.id, 5);
+  return locked_(() => {
+    const m = read_('Monedero').find(x => x.id === d.id && x.cuenta === a.id && x.tipo === 'bono');
+    if (!m) fail_('Bono no encontrado.');
+    m.movs = (m.movs || []).concat([{ at: iso_(), texto: 'El cliente avisa de que ha pagado (' + (clean_(d.como, 20) || 'Bizum/transferencia') + ')' }]);
+    update_('Monedero', m);
+    pmail_(ownerMail_(), '💶 ' + a.nombre + ' dice que ha pagado el bono ' + m.ref, 'Aviso de pago de bono', ['<b>' + esc_(a.nombre) + '</b> avisa de que ha pagado el bono <b>' + esc_(m.ref) + '</b> (' + esc_(clean_(d.como, 20) || 'Bizum/transferencia') + ').', 'Comprueba que te ha llegado y regístralo para activarlo.'], 'Registrar el pago', APP.appUrl + '#/monedero', 'Pago');
+    return walletOut_(m);
+  });
+}
+/** Dirección registra un pago del bono. Con el primer 50 % se activa y empieza a contar el año. */
+function walletPago_(d, u) {
+  admin_(u);
+  return locked_(() => {
+    const m = read_('Monedero').find(x => x.id === d.id && x.tipo === 'bono');
+    if (!m) fail_('Bono no encontrado.');
+    const imp = money_(d.importe);
+    if (!(imp > 0)) fail_('Indica el importe recibido.');
+    m.pagado = r2_((Number(m.pagado) || 0) + imp);
+    m.movs = (m.movs || []).concat([{ at: iso_(), texto: 'Pago recibido (' + (clean_(d.metodo, 20) || 'Bizum') + ')' + (clean_(d.nota, 120) ? ' · ' + clean_(d.nota, 120) : ''), imp: imp }]);
+    if (m.estado === 'Pendiente de pago' && m.pagado + 0.01 >= r2_(Number(m.total) / 2)) {
+      m.estado = 'Activo';
+      const c = new Date(); c.setFullYear(c.getFullYear() + 1); m.caduca = Utilities.formatDate(c, APP.zona, 'yyyy-MM-dd');
+      m.movs.push({ at: iso_(), texto: 'Bono activado · válido hasta ' + m.caduca.split('-').reverse().join('/') });
+      pmail_(m.email, '✅ Tu bono ' + m.nombre + ' está activado', 'Tu bono ya está activo', ['Hemos recibido tu pago de ' + eurP_(imp) + '. ¡Gracias!', 'Tu bono <b>' + esc_(m.nombre) + '</b> (' + esc_(m.ref) + ') para ' + esc_(m.matricula) + ' ya está activo: ' + m.visitas + ' visitas, válido hasta el <b>' + m.caduca.split('-').reverse().join('/') + '</b>.', 'Pide cada visita desde tu área de cliente o escríbenos.'], 'Ver mi monedero', clientUrl_() + '#area', 'Bono activo');
+    }
+    update_('Monedero', m);
+    return walletOut_(m);
+  });
 }

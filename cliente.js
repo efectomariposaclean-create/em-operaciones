@@ -32,9 +32,21 @@ const tomorrow = () => { const d = new Date(Date.now() + 864e5); return d.toISOS
 const RATES = [[149,199,349,49,89],[159,219,379,59,109],[179,249,429,69,129],[169,229,399,69,129],[189,269,449,89,159],[189,269,449,89,159],[209,289,479,99,179],[219,309,509,109,189]];
 const NAMES = ['Mini camper','Camper mediana','Gran camper','Caravana pequeña','Caravana grande','Autocaravana perfilada','Autocaravana capuchina','Autocaravana integral'];
 const CARS = [['Turismo pequeño',[42.35,72.60,90.75,121.00]],['Turismo mediano',[54.45,90.75,108.90,145.20]],['Turismo grande / SUV',[66.55,108.90,133.10,175.45]]];
-const CSRV = [['Interior básico','Aspirado, salpicadero y cristales'],['Interior + exterior básico','Lo anterior y lavado exterior a mano'],['Interior intensivo','Interior a fondo con detalle'],['Intensivo + exterior básico','Intensivo y lavado exterior']];
+const CSRV = [['Interior básico','Aspirado, salpicadero, plásticos interiores y cristales'],['Interior + exterior básico','Lo anterior y lavado exterior a presión con secado'],['Interior intensivo','Interior a fondo con detalle: movemos y abatimos asientos (sin desmontarlos)'],['Intensivo + exterior básico','Interior intensivo y lavado exterior']];
 const CEXT = [['tap','Tapicería completa',96.80],['mal','Maletero profundo',24.20],['pel','Eliminación de pelos',30.25]];
 const MIN_BIEN = 150;
+const BONOS = { Escapadas: 7, Temporadas: 10, 'Siempre a punto': 12 };
+const BCOMPO = { estandar: { Escapadas: [[1, 2]], Temporadas: [[1, 4]], 'Siempre a punto': [[1, 2], [0, 4]] }, intensiva: { Escapadas: [[2, 2]], Temporadas: [[2, 2], [1, 2]], 'Siempre a punto': [[2, 2], [0, 4]] } };
+const BSRV = ['Mantenimiento', 'Limpieza estándar', 'Limpieza intensiva'];
+const BQ = { v: 5, a: 0, base: 'estandar', bono: 'Temporadas' };
+function bonoCalc(v, a, base, bono) {
+  const r = RATES[v]; let bruto = 0;
+  const comp = BCOMPO[base][bono].map(c => { const u = Math.round(r[c[0]] * (c[0] ? 1 + a / 100 : 1) * 100) / 100; bruto += u * c[1]; return { n: c[1], srv: BSRV[c[0]] }; });
+  bruto = Math.round(bruto * 100) / 100;
+  return { comp: comp, visitas: comp.reduce((t, c) => t + c.n, 0), bruto: bruto, pct: BONOS[bono], total: Math.round(bruto * (1 - BONOS[bono] / 100) * 100) / 100 };
+}
+const XT = [['oz', 'Ozono', 'Elimina olores (tabaco, humedad, mascotas) y desinfecta. Ya va incluido en la intensiva.', 49], ['pl', 'Recuperación e hidratación de plásticos', 'Devuelve el color a los plásticos exteriores castigados por el sol.', 59], ['fr', 'Frigorífico con exceso de suciedad', 'Solo si hay grasa acumulada, el congelador huele mal o la nevera se puede desmontar (caravanas). La limpieza normal ya va incluida.', 24.20]];
+const XTP = { oz: 49, pl: 59, fr: 24.20, 49: 49, 59: 59, 39: 24.20 };
 const OTHER = ['Furgoneta','Cabeza tractora','Camión','Autobús'];
 
 function habitual() { return !!(S.token && S.cuenta && S.cuenta.bienvenida === false); }
@@ -45,7 +57,7 @@ function calc(q) {
     t = CARS[q.cv][1][q.cs] + (q.cx.indexOf('tap') >= 0 ? 0 : q.seats * 24.20) + CEXT.reduce((s, x) => s + (q.cx.indexOf(x[0]) >= 0 ? x[2] : 0), 0);
   } else {
     const r = RATES[q.v], inten = q.s === 2;
-    t = r[q.s] * (q.s ? 1 + q.a / 100 : 1) + (q.ex ? r[q.ex + 2] : 0) + (inten ? 0 : q.seat) + q.bed + q.xt.reduce((s, k) => s + (inten && k === 39 ? 0 : k), 0);
+    t = r[q.s] * (q.s ? 1 + q.a / 100 : 1) + (q.ex ? r[q.ex + 2] : 0) + (inten ? 0 : q.seat) + q.bed + q.xt.reduce((s, k) => s + (inten && (k === 'oz' || k === 49) ? 0 : XTP[k] || 0), 0);
     if (q.w === 1) t *= 1.1;
   }
   t = Math.round(t * 100) / 100;
@@ -55,7 +67,7 @@ function calc(q) {
 }
 function selOf(q) {
   if (q.tipo === 'coche') return { tipo: 'coche', v: q.cv, s: q.cs, seats: q.cx.indexOf('tap') >= 0 ? 0 : q.seats, ex: q.cx.slice(), w: q.w, rec: q.w === 2 && q.rec, sm: q.sm };
-  return { tipo: 'auto', v: q.v, a: q.a, st: q.st, s: q.s, ex: q.ex, seat: q.s === 2 ? 0 : q.seat, bed: q.bed, xt: q.xt.slice(), w: q.w, rec: q.w === 2 && q.rec, sm: q.sm };
+  return { tipo: 'auto', v: q.v, a: q.a, st: q.st, s: q.s, ex: q.ex, seat: q.s === 2 ? 0 : q.seat, bed: q.bed, xt: q.xt.map(k => ({ 49: 'oz', 59: 'pl', 39: 'fr' }[k] || k)).filter(k => !(q.s === 2 && k === 'oz')), w: q.w, rec: q.w === 2 && q.rec, sm: q.sm };
 }
 
 /* ---------------- Inicio ---------------- */
@@ -89,6 +101,7 @@ function viewQuote() {
     const auto = q.tipo !== 'coche', C = calc(q);
     let h = '<div class="seg"><button data-tipo="auto" class="' + (auto ? 'on' : '') + '">Autocaravana · camper · caravana</button><button data-tipo="coche" class="' + (!auto ? 'on' : '') + '">Coche</button></div>';
     const chip = (k, val, label, price, on, dis) => '<button class="chip' + (on ? ' on' : '') + '" data-k="' + k + '" data-val="' + esc(JSON.stringify(val)) + '"' + (dis ? ' disabled' : '') + '>' + esc(label) + (price ? '<i>' + esc(price) + '</i>' : '') + '</button>';
+    const xopt = (val, title, sub, price, on, dis) => '<button class="opt chk' + (on ? ' on' : '') + '" data-k="xt" data-val="' + esc(JSON.stringify(val)) + '"' + (dis ? ' disabled' : '') + '><span class="dot">' + (on ? '✓' : '') + '</span><span class="t"><b>' + esc(title) + '</b><span>' + esc(sub) + '</span></span><span class="p">' + esc(price) + '</span></button>';
     const opt = (k, val, title, sub, price, on, dis) => '<button class="opt' + (on ? ' on' : '') + '" data-k="' + k + '" data-val="' + esc(JSON.stringify(val)) + '"' + (dis ? ' disabled' : '') + '><span class="dot"></span><span class="t"><b>' + esc(title) + '</b><span>' + esc(sub) + '</span></span><span class="p">' + esc(price || '') + '</span></button>';
     if (auto) {
       const r = RATES[q.v], inten = q.s === 2;
@@ -96,12 +109,15 @@ function viewQuote() {
       h += '<div class="h">Antigüedad</div><div class="chips">' + [[0, 'Hasta 5 años'], [10, 'De 5 a 10'], [25, 'Más de 10']].map(x => chip('a', x[0], x[1], '', q.a === x[0])).join('') + '</div>';
       h += '<div class="h">¿Cómo está por dentro?<small>Sé sincero: lo comprobamos con tus fotos y así no hay sorpresas.</small></div><div class="chips">' + ['Habitual', 'Suciedad acumulada', 'Recuperación'].map((n, i) => chip('st', i, n, '', q.st === i)).join('') + '</div>';
       h += '<div class="h">Limpieza interior</div>' + opt('s', 0, 'Mantenimiento', habitual() ? 'Para mantenerla al día entre limpiezas' : 'Para clientes habituales, tras tu primera limpieza', eur(r[0]), q.s === 0, !habitual() || q.st !== 0) +
-        opt('s', 1, 'Estándar', 'Salón, cocina, baño, suelos y cristales', eur(r[1] * (1 + q.a / 100)), q.s === 1) +
-        opt('s', 2, 'Intensiva', 'A fondo · incluye tapicerías y frigorífico', eur(r[2] * (1 + q.a / 100)), q.s === 2);
-      h += '<div class="h">Exterior</div><div class="chips">' + [[0, 'Sin exterior', ''], [1, 'Básico', eur(r[3])], [2, 'Intensivo', eur(r[4])]].map(x => chip('ex', x[0], x[1], x[2], q.ex === x[0])).join('') + '</div>';
+        opt('s', 1, 'Estándar', 'Salón, cocina, baño, dormitorio, suelos y cristales por dentro. Limpieza normal del frigorífico incluida.', eur(r[1] * (1 + q.a / 100)), q.s === 1) +
+        opt('s', 2, 'Intensiva', 'Todo lo de la estándar más a fondo: tapicerías, ozono y desmontaje de asientos cuando es posible y seguro (en caravanas, lo que se puede mover).', eur(r[2] * (1 + q.a / 100)), q.s === 2);
+      h += '<div class="h">Exterior</div>' + opt('ex', 0, 'Sin exterior', 'Solo interior', '', q.ex === 0) +
+        opt('ex', 1, 'Exterior básico', 'Lavado a presión de carrocería, cristales y llantas, y buen secado de todo el vehículo, techo incluido.', eur(r[3]), q.ex === 1) +
+        opt('ex', 2, 'Exterior intensivo', 'Lo del básico con más detalle: exceso de mosquitos del frontal, chorretones negros, juntas, marcos y bordes de ventanas y puertas, y techo con placas solares, con cuidado de siliconas y cierres. Siempre limpieza, no reparación.', eur(r[4]), q.ex === 2);
       h += '<div class="h">Tapicerías' + (inten ? '<small>Incluidas en la intensiva</small>' : '') + '</div>' + (inten ? '' : '<div class="chips">' + [[0, 'Ninguna'], [39, 'Un asiento'], [69, 'Asientos de cabina'], [129, 'Cuatro plazas']].map(x => chip('seat', x[0], x[1], x[0] ? eur(x[0]) : '', q.seat === x[0])).join('') + '</div>');
       h += '<div class="h">Colchones</div><div class="chips">' + [[0, 'Ninguno'], [69, 'Individual'], [99, 'Doble']].map(x => chip('bed', x[0], x[1], x[0] ? eur(x[0]) : '', q.bed === x[0])).join('') + '</div>';
-      h += '<div class="h">Extras</div><div class="chips">' + [[49, 'Ozono'], [59, 'Plásticos'], [39, 'Frigorífico a fondo']].map(x => { const inc = inten && x[0] === 39; return chip('xt', x[0], (q.xt.indexOf(x[0]) >= 0 || inc ? '✓ ' : '+ ') + x[1], inc ? 'incluido' : eur(x[0]), q.xt.indexOf(x[0]) >= 0 || inc, inc); }).join('') + '</div>';
+      h += '<div class="h">Extras<small>Solo si los necesitas. Cada uno te dice cuándo tiene sentido.</small></div>' +
+        XT.map(x => { const inc = inten && x[0] === 'oz', on = q.xt.indexOf(x[0]) >= 0 || inc; return xopt(x[0], x[1], x[0] === 'pl' && q.a === 25 ? x[2] + ' Tu vehículo tiene más de 10 años: lo valoramos con tus fotos y, si no se puede recuperar, no te lo cobramos.' : x[2], inc ? 'Incluido' : eur(x[3]), on, inc); }).join('');
     } else {
       const car = CARS[q.cv], tap = q.cx.indexOf('tap') >= 0;
       h += '<div class="h">Tamaño del coche</div><div class="chips">' + CARS.map((c, i) => chip('cv', i, c[0], '', q.cv === i)).join('') + '</div>';
@@ -276,11 +292,11 @@ async function viewMagic(m) {
   try { setSession(await api('pMagic', { m: m })); history.replaceState(null, '', location.pathname + '#area'); toast('Has entrado. Puedes poner una contraseña nueva en «Mi cuenta».'); route(); }
   catch (e) { viewError(e.message); }
 }
-async function viewArea(tab) {
+async function viewArea(tab, cached) {
   if (!S.token) return go('entrar');
   tab = tab || LS.get('tab', 'inicio'); if (!S.preview) LS.set('tab', tab);
   if (!S.me) APP.innerHTML = top('Mi área', 'Efecto Mariposa', null) + '<div class="spin"></div>';
-  try { S.me = await api('cMe', {}); } catch (e) { if (!S.me) return viewError(e.message); }
+  if (!(cached && S.me)) { try { S.me = await api('cMe', {}); } catch (e) { if (!S.me) return viewError(e.message); } }
   const me = S.me;
   S.cuenta = me.cuenta; LS.set('cuenta', me.cuenta);
   const chip = e => '<span class="st ' + (e === 'Hecha' || e === 'Programada' || e === 'Entregado' || e === 'Listo' ? 'ok' : /Rechaz|Cancel/.test(e) ? 'bad' : '') + '">' + esc(e) + '</span>';
@@ -302,10 +318,30 @@ async function viewArea(tab) {
       '<p class="small muted center">Las fotos de cada servicio se guardan 30 días. El servicio, el albarán y la factura quedan siempre aquí.</p>';
   } else if (tab === 'monedero') {
     const bonos = me.monedero.filter(m => m.tipo === 'bono'), gifts = me.monedero.filter(m => m.tipo === 'regalo');
-    h = bonos.map(m => '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><div><span class="small muted">MI BONO</span><div style="font-weight:700;color:var(--navy);font-size:15px">' + esc(m.nombre) + ' · ' + m.visitas + ' visitas</div></div><span class="st ok">Quedan ' + (m.visitas - m.usadas) + '</span></div><div style="display:flex;gap:6px;margin-top:10px">' + Array.from({ length: m.visitas }, (_, i) => '<div style="flex:1;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:' + (i < m.usadas ? 'var(--green);color:#fff' : '#eef2f4;color:#5b7079') + '">' + (i < m.usadas ? '✓' : i + 1) + '</div>').join('') + '</div>' + (m.caduca ? '<p class="small muted" style="margin-top:6px">Válido hasta el ' + fd(m.caduca) + '</p>' : '') + '</div>').join('') +
-      gifts.map(m => '<div class="promo"' + (m.estado === 'Usado' || m.estado === 'Caducado' ? ' style="opacity:.55"' : '') + '><div class="badge" style="font-size:15px">' + eur(m.saldo).replace(',00', '') + '</div><h3>🎁 Vale regalo ' + esc(m.codigo) + '</h3><p>' + (m.de ? 'De ' + esc(m.de) + ' · ' : '') + (m.estado === 'Usado' ? 'Ya usado' : m.estado === 'Caducado' ? 'Caducado' : 'Saldo ' + eur(m.saldo) + ' de ' + eur(m.inicial)) + (m.caduca ? ' · válido hasta el ' + fd(m.caduca) : '') + '<br>Escribe el código al pedir tu presupuesto y lo descontamos del total.</p></div>').join('') +
-      '<div class="card"><b style="color:var(--navy)">¿Tienes un vale regalo?</b><p class="small muted" style="margin-top:2px">Guárdalo aquí para no perderlo.</p><div style="display:flex;gap:8px;margin-top:8px"><input class="in" id="gc" placeholder="VR2026001" style="margin:0;text-transform:uppercase"><button class="btn sm" id="gcb">Añadir</button></div></div>' +
-      '<div class="card"><b style="color:var(--navy)">Bonos</b><p class="small muted" style="margin:4px 0 6px">Varias limpiezas al año con descuento. Pagas el 50 % al contratar y el resto por visita.</p>' + [['Escapadas', '2 visitas', '−7 %'], ['Temporadas', '4 visitas', '−10 %'], ['Siempre a punto', '6 visitas', '−12 %']].map(b => '<div class="li"><div class="g"><b>' + b[0] + '</b><span>' + b[1] + '</span></div><span class="st ok">' + b[2] + '</span></div>').join('') + '<a class="btn ghost" style="margin-top:8px" href="#nuevo">Pide presupuesto y dinos que quieres bono</a></div>';
+    const pi = me.pago;
+    const bonoCard = m => {
+      const pend = m.estado === 'Pendiente de pago', off = m.estado === 'Gastado' || m.estado === 'Caducado' || m.estado === 'Anulado';
+      const pctPag = m.total ? Math.min(100, Math.round(m.pagado / m.total * 100)) : 0;
+      return '<div class="wcard bono' + (off ? ' off' : '') + '"><div class="wtop"><span>BONO ' + esc(m.ref || '') + '</span><span class="wst">' + esc(m.estado) + '</span></div>' +
+        '<div class="wname">' + esc(m.nombre) + ' · ' + m.visitas + ' visitas</div><div class="wsub">' + esc([m.comp && m.comp.vehiculo, m.matricula].filter(Boolean).join(' · ')) + (m.caduca ? ' · hasta el ' + fd(m.caduca) : '') + '</div>' +
+        '<div class="wvis">' + Array.from({ length: m.visitas }, (_, i) => '<span class="' + (i < m.usadas ? 'on' : '') + '">' + (i < m.usadas ? '✓' : i + 1) + '</span>').join('') + '</div>' +
+        (m.comp ? '<div class="wsub">' + m.comp.comp.map(c => c.n + ' × ' + c.srv.toLowerCase()).join(' + ') + '</div>' : '') +
+        (m.total ? '<div class="wbar"><i style="width:' + pctPag + '%"></i></div><div class="wsub">Pagado ' + eur(m.pagado) + ' de ' + eur(m.total) + (!pend && m.pagado < m.total ? ' · ' + eur(m.porVisita) + ' en cada visita' : '') + '</div>' : '') +
+        (pend && pi ? '<div class="wpay"><b>Para activarlo, paga ' + eur(m.total / 2) + '</b><br>Bizum: <b>' + esc(pi.bizum) + '</b>' + (pi.iban ? '<br>Transferencia: <b>' + esc(pi.iban) + '</b><br>' + esc(pi.titular) : '') + '<br>Concepto: <b>' + esc(m.ref) + '</b><button class="btn sm" data-paid="' + esc(m.id) + '" style="margin-top:8px;width:100%">Ya lo he pagado</button></div>' : '') + '</div>';
+    };
+    h = bonos.map(bonoCard).join('') +
+      gifts.map(m => '<div class="wcard gift' + (m.estado === 'Usado' || m.estado === 'Caducado' ? ' off' : '') + '"><div class="wtop"><span>🎁 VALE REGALO</span><span class="wst">' + esc(m.estado === 'Asignado' ? 'Tuyo' : m.estado) + '</span></div><div class="wamt">' + eur(m.saldo) + '</div><div class="wcode">' + esc(m.codigo) + '</div><div class="wsub">' + (m.de ? 'De ' + esc(m.de) + ' · ' : '') + 'de ' + eur(m.inicial) + (m.caduca ? ' · válido hasta el ' + fd(m.caduca) : '') + '</div>' + (m.estado === 'Usado' ? '<div class="stamp">USADO</div>' : '') + '</div>').join('') +
+      '<div class="card"><b style="color:var(--navy)">¿Tienes un vale regalo?</b><p class="small muted" style="margin-top:2px">Guárdalo aquí para no perderlo. Se descuenta del total cuando pidas tu servicio.</p><div style="display:flex;gap:8px;margin-top:8px"><input class="in" id="gc" placeholder="VR2026001" style="margin:0;text-transform:uppercase"><button class="btn sm" id="gcb">Añadir</button></div></div>' +
+      '<div class="card" id="bcalc"><b style="color:var(--navy);font-size:16px">Calcula tu bono</b><p class="small muted" style="margin:3px 0 8px">Varias limpiezas al año para tu vehículo, con descuento. Pagas el 50 % para activarlo y el resto poco a poco en cada visita.</p>' +
+      '<label class="f">Tu vehículo<select class="in" id="bv">' + NAMES.map((n, i) => '<option value="' + i + '"' + (i === BQ.v ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' +
+      '<div class="h">Antigüedad</div><div class="seg" id="ba">' + [[0, 'Hasta 5 años'], [10, '5 a 10'], [25, 'Más de 10']].map(x => '<button data-ba="' + x[0] + '" class="' + (BQ.a === x[0] ? 'on' : '') + '">' + x[1] + '</button>').join('') + '</div>' +
+      '<div class="h">Tipo de limpieza</div><div class="seg">' + [['estandar', 'Estándar'], ['intensiva', 'Intensiva']].map(x => '<button data-bb="' + x[0] + '" class="' + (BQ.base === x[0] ? 'on' : '') + '">' + x[1] + '</button>').join('') + '</div>' +
+      '<div class="h">Bono</div>' + Object.keys(BONOS).map(k => { const c = bonoCalc(BQ.v, BQ.a, BQ.base, k); return '<button class="opt' + (BQ.bono === k ? ' on' : '') + '" data-bk="' + esc(k) + '"><span class="dot"></span><span class="t"><b>' + esc(k) + ' · ' + c.visitas + ' visitas · −' + c.pct + ' %</b><span>' + esc(c.comp.map(x => x.n + ' × ' + x.srv.toLowerCase()).join(' + ')) + '</span></span><span class="p">' + eur(c.total) + '</span></button>'; }).join('') +
+      (() => { const c = bonoCalc(BQ.v, BQ.a, BQ.base, BQ.bono); return '<div class="lines" style="margin-top:8px"><div><span>Precio sin bono</span><b style="text-decoration:line-through;color:var(--muted)">' + eur(c.bruto) + '</b></div><div class="d"><span>Te ahorras (−' + c.pct + ' %)</span><b>' + eur(c.bruto - c.total) + '</b></div><div class="tt"><span>Tu bono</span><b>' + eur(c.total) + '</b></div><div style="border:0"><span>Para activarlo (50 %)</span><b>' + eur(c.total / 2) + '</b></div></div>'; })() +
+      '<label class="f" style="margin-top:8px">Matrícula del vehículo<input class="in" id="bm" placeholder="1234 ABC" style="text-transform:uppercase"></label>' +
+      '<details style="margin-top:8px"><summary>Condiciones del bono</summary><ul class="prep"><li>Va unido a <b>un vehículo</b> (su matrícula) y a ti. No se puede usar en otro vehículo ni pasar a otra persona.</li><li>Pagas el <b>50 % para activarlo</b> y el resto repartido en cada visita.</li><li>Es válido <b>12 meses</b> desde que se activa. Si al final te queda alguna visita, escríbenos y buscamos una solución. <b>No se devuelve el dinero.</b></li><li>El precio es para el vehículo en <b>estado habitual</b>. Si en la primera visita necesita una limpieza de recuperación, te avisamos del suplemento antes de empezar.</li><li>No se suma al −10 % de bienvenida ni a otras ofertas: el bono ya tiene su descuento.</li></ul></details>' +
+      '<label class="ck" style="margin-top:8px"><input type="checkbox" id="bok"> <span>He leído y acepto las condiciones del bono.</span></label>' +
+      '<button class="btn" id="bgo" style="margin-top:10px">Lo quiero</button></div>';
   } else {
     h = '<div class="card" style="display:flex;flex-direction:column;gap:10px"><b style="color:var(--navy)">Mis datos</b>' +
       '<label class="f">Nombre y apellidos<input class="in" id="dn" value="' + esc(me.cuenta.nombre) + '"></label>' +
@@ -320,6 +356,13 @@ async function viewArea(tab) {
   APP.innerHTML = top('Hola, ' + me.cuenta.nombre.split(' ')[0], S.preview ? 'Vista de dirección · solo lectura' : 'Mi área', null) + '<div class="pad">' + (S.preview ? '<p class="note warn">👁️ Estás viendo el área tal como la ve este cliente. No se puede cambiar nada.</p>' : '') + '<div class="seg">' + TABS.map(t => '<button data-tab="' + t[0] + '" class="' + (t[0] === tab ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div>' + h + '</div>';
   $$('[data-tab]').forEach(b => b.onclick = () => viewArea(b.dataset.tab));
   $$('[data-file]').forEach(el => el.onclick = async () => { toast('Preparando el PDF…'); try { const x = await api('cFile', { kind: el.dataset.file, id: el.dataset.id }); const a = document.createElement('a'); a.href = x.data; a.download = x.name; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { toast(e.message, true); } });
+  const redraw = () => { const y = window.scrollY; viewArea('monedero', true).then(() => window.scrollTo(0, y)); };
+  if ($('#bv')) $('#bv').onchange = e => { BQ.v = Number(e.target.value); redraw(); };
+  $$('[data-ba]').forEach(b => b.onclick = () => { BQ.a = Number(b.dataset.ba); redraw(); });
+  $$('[data-bb]').forEach(b => b.onclick = () => { BQ.base = b.dataset.bb; redraw(); });
+  $$('[data-bk]').forEach(b => b.onclick = () => { BQ.bono = b.dataset.bk; redraw(); });
+  if ($('#bgo')) $('#bgo').onclick = async () => { const b = $('#bgo'); if (!$('#bok').checked) return toast('Acepta las condiciones del bono.', true); busy(b, true); try { await api('cBonoPedir', { v: BQ.v, a: BQ.a, base: BQ.base, bono: BQ.bono, matricula: $('#bm').value, acepto: true }); toast('¡Bono reservado! Te hemos enviado los datos de pago.'); S.me = null; window.scrollTo(0, 0); viewArea('monedero'); } catch (e) { busy(b, false); toast(e.message, true); } };
+  $$('[data-paid]').forEach(b => b.onclick = async () => { busy(b, true); try { await api('cBonoAviso', { id: b.dataset.paid, como: 'Bizum/transferencia' }); toast('¡Gracias! Lo comprobamos y te avisamos al activarlo.'); busy(b, false); b.textContent = 'Aviso enviado ✓'; b.disabled = true; } catch (e) { busy(b, false); toast(e.message, true); } });
   if ($('#gcb')) $('#gcb').onclick = async () => { try { await api('cCanjear', { codigo: $('#gc').value }); toast('¡Vale añadido!'); viewArea('monedero'); } catch (e) { toast(e.message, true); } };
   if ($('#of')) $('#of').onchange = async e => { try { await api('cSave', { ofertas: e.target.checked }); toast('Guardado'); } catch (x) { toast(x.message, true); } };
   if ($('#dsv')) $('#dsv').onclick = async () => { try { const r = await api('cSave', { nombre: $('#dn').value.trim(), telefono: $('#dt').value.trim(), email: $('#de').value.trim() }); S.cuenta = r.cuenta; LS.set('cuenta', r.cuenta); toast('Datos guardados'); S.me = null; viewArea('cuenta'); } catch (x) { toast(x.message, true); } };

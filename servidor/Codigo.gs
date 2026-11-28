@@ -10,7 +10,7 @@
 
 const APP = {
   nombre: 'Efecto Mariposa · Operaciones',
-  version: '3.8.0',
+  version: '3.9.0',
   appUrl: 'https://efectomariposaclean-create.github.io/em-operaciones/',
   diasEnlace: 30,          // días que el enlace del particular sigue activo tras la entrega
   zona: 'Europe/Madrid',
@@ -55,14 +55,14 @@ const SCHEMA = {
   Facturas:   ['id', 'numero', 'fecha', 'cliente', 'datos', 'lineas', 'imponible', 'ivaPct', 'iva', 'retPct', 'ret', 'total', 'estado', 'cobros', 'vence', 'archivo', 'notas', 'servicios', 'origen', 'por', 'creado', 'anticipo'],
   Presupuestos:['id', 'numero', 'fecha', 'contacto', 'cliente', 'datos', 'lineas', 'imponible', 'ivaPct', 'iva', 'total', 'validez', 'estado', 'archivo', 'notas', 'por', 'creado'],
   Cuentas:    ['id', 'email', 'nombre', 'telefono', 'hash', 'sal', 'tipo', 'cliente', 'contacto', 'rol', 'ofertas', 'bienvenida', 'tokenV', 'activo', 'creado', 'ultimo'],
-  Monedero:   ['id', 'tipo', 'cliente', 'cuenta', 'nombre', 'codigo', 'visitas', 'usadas', 'saldo', 'inicial', 'caduca', 'para', 'de', 'email', 'notas', 'movs', 'creado', 'activo', 'usuario'],
+  Monedero:   ['id', 'tipo', 'cliente', 'cuenta', 'nombre', 'codigo', 'visitas', 'usadas', 'saldo', 'inicial', 'caduca', 'para', 'de', 'email', 'notas', 'movs', 'creado', 'activo', 'usuario', 'total', 'pagado', 'ref', 'matricula', 'comp', 'estado'],
   Ofertas:    ['id', 'titulo', 'texto', 'pct', 'hasta', 'activa', 'enviada', 'n', 'creado'],
   Solicitudes:['id', 'numero', 'fecha', 'cuenta', 'contacto', 'cliente', 'nombre', 'telefono', 'email', 'sel', 'vehiculo', 'resumen', 'lineas', 'manual', 'descuento', 'total', 'estado', 'fotos', 'chat', 'dia', 'propuesto', 'token', 'revisado', 'notas', 'carpeta', 'ofertas', 'evento', 'actualizado', 'vale'],
   Contabilidad:['id', 'fecha', 'tipo', 'categoria', 'concepto', 'proveedor', 'imponible', 'ivaPct', 'iva', 'total', 'deducible', 'ivaDed', 'metodo', 'justificante', 'notas', 'origen', 'ref', 'por', 'creado']
 };
 const NOCACHE = { Articulos: 1, Movimientos: 1, Cargas: 1, Ubicaciones: 1 };
-const JSON_COLS = { tipos: 1, acceso: 1, extras: 1, grupos: 1, notas: 1, fases: 1, maquina: 1, recibo: 1, archivado: 1, resuelta: 1, descansos: 1, geo: 1, auditoria: 1, servicios: 1, antes: 1, despues: 1, avisos: 1, conformidad: 1, base: 1, segun: 1, no: 1, crm: 1, tarifa: 1, lineas: 1, cobros: 1, datos: 1, anticipo: 1, sel: 1, descuento: 1, fotos: 1, chat: 1, respuestas: 1, movs: 1, vale: 1 };
-const SCHEMA_V = '10';
+const JSON_COLS = { tipos: 1, acceso: 1, extras: 1, grupos: 1, notas: 1, fases: 1, maquina: 1, recibo: 1, archivado: 1, resuelta: 1, descansos: 1, geo: 1, auditoria: 1, servicios: 1, antes: 1, despues: 1, avisos: 1, conformidad: 1, base: 1, segun: 1, no: 1, crm: 1, tarifa: 1, lineas: 1, cobros: 1, datos: 1, anticipo: 1, sel: 1, descuento: 1, fotos: 1, chat: 1, respuestas: 1, movs: 1, vale: 1, comp: 1 };
+const SCHEMA_V = '11';
 const ARCHIVABLES = ['Servicios', 'Tiempos', 'Incidencias', 'Fotos', 'Jornadas', 'Cambios', 'Actividad'];
 
 /* ------------------------------------------------------------------ */
