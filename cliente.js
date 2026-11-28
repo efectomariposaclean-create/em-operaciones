@@ -167,8 +167,10 @@ function viewQuote() {
 }
 
 /* ---------------- Datos de contacto ---------------- */
-function viewData() {
+async function viewData() {
   const q = S.q; if (!q) return go('');
+  if (S.token && !S.me) { try { S.me = await api('cMe', {}); } catch (e) {} }
+  const vehs = S.token && S.me ? (S.me.vehiculos || []) : [];
   const C = calc(q), a = S.cuenta || {}, d = LS.get('datos', {});
   APP.innerHTML = top('Tus datos', 'Paso 2 de 3', 'presupuesto') + '<div class="pad">' +
     '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><span class="small muted">Tu presupuesto</span><b style="font-size:18px;color:var(--navy)">' + eur(C.bruto - C.desc) + '</b></div>' + (C.pct ? '<div class="small" style="color:var(--green);text-align:right">Incluye −' + C.pct + ' %</div>' : '') + (C.conCuenta ? '<div class="small" style="color:var(--green);text-align:right">Con tu cuenta: ' + eur(C.conCuenta) + ' (te la ofrecemos al enviar)</div>' : '') + '</div>' +
@@ -177,7 +179,9 @@ function viewData() {
     '<label class="f">Teléfono<input class="in" id="tel" type="tel" autocomplete="tel" value="' + esc(a.telefono || d.telefono || '') + '"></label>' +
     '<label class="f">Correo · ahí te llega tu enlace<input class="in" id="email" type="email" autocomplete="email" value="' + esc(a.email || d.email || '') + '"' + (a.email ? ' readonly' : '') + '></label>' +
     '<label class="f">Municipio<input class="in" id="muni" value="' + esc(d.municipio || '') + '" placeholder="San Martín de la Vega"></label>' +
-    '<label class="f">Marca y modelo (opcional)<input class="in" id="modelo" placeholder="Adria Coral 670"></label>' +
+    (vehs.length ? '<label class="f">¿Para qué vehículo?<select class="in" id="vsel"><option value="">Otro vehículo</option>' + vehs.map(v => '<option value="' + esc(v.id) + '">' + esc([v.tipo, v.modelo, v.matricula].filter(Boolean).join(' · ')) + '</option>').join('') + '</select></label>' : '') +
+    '<div id="vnew"><label class="f">Marca y modelo (opcional)<input class="in" id="modelo" placeholder="Adria Coral 670"></label>' +
+    '<label class="f">Matrícula (opcional)<input class="in" id="vmat" placeholder="1234 ABC" style="text-transform:uppercase"></label><p class="small muted" style="margin-top:-4px">Si la pones, tu presupuesto, fotos y servicio quedan unidos a tu vehículo.</p></div>' +
     '<label class="f">¿Tienes un vale regalo? (opcional)<div style="display:flex;gap:8px;margin-top:5px"><input class="in" id="vale" placeholder="VR2026001" style="margin:0;text-transform:uppercase" value="' + esc(LS.get('vale', '')) + '"><button type="button" class="btn sm ghost" id="valeb">Comprobar</button></div></label><div id="valei" class="small" style="color:var(--green)"></div>' +
     (S.token ? '' : conocioSel()) +
     '<label class="f">¿Algo que debamos saber?<textarea class="in" id="notas" placeholder="Manchas, olor a humedad, pelo de perro…"></textarea></label>' +
@@ -187,10 +191,11 @@ function viewData() {
     '<div class="card"><details><summary>Cómo dejarlo preparado el día del servicio</summary><ul class="prep">' + (q.tipo === 'coche' ? ['Maletero y guantera vacíos', 'Sillitas de niño retiradas', 'Objetos de valor fuera', 'Llaves disponibles a la hora acordada'] : ['Depósitos de aguas grises y negras vaciados', 'Ropa, comida y objetos personales fuera', 'Nevera vacía y desconectada', '1,5 m libres alrededor y toldo recogido']).map(x => '<li>' + esc(x) + '</li>').join('') + '</ul><p class="note" style="margin-top:6px">¿Sin agua ni luz? No pasa nada: llevamos generador y depósito propios. Según el servicio puede llevar un pequeño suplemento; te lo confirmamos antes.</p></details></div>' +
     '</div><div class="bar"><div class="in2"><button class="btn" id="send">Enviar y añadir fotos</button></div></div>';
   conocioBind();
+  if ($('#vsel')) $('#vsel').onchange = () => { $('#vnew').hidden = !!$('#vsel').value; };
   $('#valeb').onclick = async () => { const c = $('#vale').value.trim(); if (!c) return; try { const r = await api('pVale', { codigo: c, email: $('#email').value.trim(), device: device }); $('#valei').style.color = 'var(--green)'; $('#valei').textContent = '✓ Vale ' + r.codigo + ' · saldo ' + eur(r.saldo) + ' · válido hasta el ' + fday(r.caduca) + '. Se descuenta del total.'; } catch (e) { $('#valei').style.color = 'var(--bad)'; $('#valei').textContent = e.message; } };
   $('#send').onclick = async () => {
     const v = id => $('#' + id) ? $('#' + id).value.trim() : '';
-    const body = { nombre: v('nombre'), telefono: v('tel'), email: v('email'), municipio: v('muni'), modelo: v('modelo'), notas: v('notas'), privacidad: $('#priv').checked, ofertas: !!($('#ofer') && $('#ofer').checked), sel: selOf(q), device: device, vale: v('vale').toUpperCase(), ...procedencia() };
+    const body = { nombre: v('nombre'), telefono: v('tel'), email: v('email'), municipio: v('muni'), modelo: v('modelo'), notas: v('notas'), privacidad: $('#priv').checked, ofertas: !!($('#ofer') && $('#ofer').checked), sel: selOf(q), device: device, vale: v('vale').toUpperCase(), vehiculoId: v('vsel'), matricula: v('vmat').toUpperCase(), ...procedencia() };
     LS.set('vale', '');
     if (!body.privacidad) return toast('Marca la casilla de privacidad para continuar.', true);
     LS.set('datos', { nombre: body.nombre, telefono: body.telefono, email: body.email, municipio: body.municipio });
@@ -250,7 +255,7 @@ async function viewSol(t) {
     '<div class="small muted" style="border:0"><span>Base + IVA 21 %</span><span>' + eur(s.total / 1.21) + ' + ' + eur(s.total - s.total / 1.21) + '</span></div>' +
     '<div class="tt"><span>Total</span><b>' + eur(s.total) + '</b></div>' +
     (s.vale && s.vale.imp ? '<div class="d" style="border:0;margin-top:6px"><span>🎁 Vale regalo ' + esc(s.vale.codigo) + '</span><b>−' + eur(s.vale.imp) + '</b></div><div style="border:0"><span><b>A pagar</b></span><b style="font-size:17px">' + eur(s.pagar) + '</b></div>' : '');
-  let h = '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><b style="color:var(--navy)">' + esc(s.resumen) + '</b><div class="small muted">' + esc(s.vehiculo) + ' · ' + esc(s.lugar) + '</div></div><span class="st ' + chipCls + '">' + esc(s.estado) + '</span></div>' +
+  let h = '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><b style="color:var(--navy)">' + esc(s.resumen) + '</b><div class="small muted">' + esc(s.vehiculo) + (s.matricula ? ' · ' + esc(s.matricula) : '') + ' · ' + esc(s.lugar) + '</div></div><span class="st ' + chipCls + '">' + esc(s.estado) + '</span></div>' +
     (closed ? '' : '<div class="steps" style="margin-top:10px">' + STEPS.map((x, i) => '<div class="s ' + (i < idx || s.estado === 'Hecha' ? 'done' : i === idx ? 'now' : '') + '"><span class="k">' + (i < idx || s.estado === 'Hecha' ? '✓' : i + 1) + '</span><div><b>' + esc(x[0]) + '</b><span>' + esc(x[1]) + '</span></div></div>').join('') + '</div>') + '</div>';
   h += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="color:var(--navy)">' + (s.revisado ? 'Presupuesto revisado' : 'Presupuesto calculado') + '</b><span class="small muted">' + esc(s.numero) + '</span></div><div class="lines">' + lines + '</div>' +
     '<p class="small muted" style="margin-top:8px">' + (s.revisado ? 'Revisado por Enrique. El descuento no se acumula con otras ofertas.' : 'Pendiente de revisión: lo confirmamos al ver tus fotos.') + '</p></div>';
@@ -368,6 +373,8 @@ async function viewArea(tab, cached) {
       '<label class="f">Teléfono<input class="in" id="dt" type="tel" value="' + esc(me.cuenta.telefono || '') + '"></label>' +
       '<label class="f">Correo (con él entras)<input class="in" id="de" type="email" value="' + esc(me.cuenta.email) + '"></label>' +
       '<button class="btn sm" id="dsv">Guardar mis datos</button><p class="small muted" style="margin-top:-4px">Se actualizan también en nuestra ficha, para avisarte siempre donde toca.</p></div>' +
+      '<div class="card"><b style="color:var(--navy)">Mis vehículos</b>' + ((me.vehiculos || []).length ? me.vehiculos.map(v => '<div class="li"><div class="g"><b>' + esc(v.matricula || 'Sin matrícula') + '</b><span>' + esc([v.tipo, v.modelo].filter(Boolean).join(' · ')) + '</span></div><button class="ib" style="width:34px;height:34px" data-vdel="' + esc(v.id) + '" aria-label="Quitar">✕</button></div>').join('') : '<p class="small muted" style="margin-top:4px">Añade tus vehículos y pide presupuesto para cada uno en un toque.</p>') +
+      '<details style="margin-top:8px"><summary>+ Añadir vehículo</summary><label class="f" style="margin-top:8px">Tipo<select class="in" id="vt">' + NAMES.concat(CARS.map(c => c[0])).map(n => '<option>' + n + '</option>').join('') + '</select></label><label class="f" style="margin-top:8px">Marca y modelo<input class="in" id="vm"></label><label class="f" style="margin-top:8px">Matrícula (opcional)<input class="in" id="vp" style="text-transform:uppercase"></label><button class="btn sm" id="vadd" style="margin-top:8px">Guardar vehículo</button></details></div>' +
       '<div class="card" style="display:flex;flex-direction:column;gap:10px"><b style="color:var(--navy)">Preferencias</b>' +
       '<label class="ck"><input type="checkbox" id="of"' + (me.cuenta.ofertas ? ' checked' : '') + '> <span>Recibir ofertas exclusivas por correo</span></label>' +
       '<details><summary>Cambiar contraseña</summary><label class="f" style="margin-top:8px">Actual<input class="in" type="password" id="pa"></label><label class="f" style="margin-top:8px">Nueva<input class="in" type="password" id="pn" autocomplete="new-password"></label><button class="btn sm" id="pwb" style="margin-top:8px">Guardar</button></details>' +
@@ -385,6 +392,8 @@ async function viewArea(tab, cached) {
   $$('[data-paid]').forEach(b => b.onclick = async () => { busy(b, true); try { await api('cBonoAviso', { id: b.dataset.paid, como: 'Bizum/transferencia' }); toast('¡Gracias! Lo comprobamos y te avisamos al activarlo.'); busy(b, false); b.textContent = 'Aviso enviado ✓'; b.disabled = true; } catch (e) { busy(b, false); toast(e.message, true); } });
   if ($('#gcb')) $('#gcb').onclick = async () => { try { await api('cCanjear', { codigo: $('#gc').value }); toast('¡Vale añadido!'); viewArea('monedero'); } catch (e) { toast(e.message, true); } };
   if ($('#of')) $('#of').onchange = async e => { try { await api('cSave', { ofertas: e.target.checked }); toast('Guardado'); } catch (x) { toast(x.message, true); } };
+  if ($('#vadd')) $('#vadd').onclick = async () => { try { await api('cVehSave', { tipo: $('#vt').value, modelo: $('#vm').value, matricula: $('#vp').value }); toast('Vehículo guardado'); S.me = null; viewArea('cuenta'); } catch (e) { toast(e.message, true); } };
+  $$('[data-vdel]').forEach(b => b.onclick = async () => { if (!confirm('¿Quitar este vehículo?')) return; try { await api('cVehSave', { id: b.dataset.vdel, borrar: true }); S.me = null; viewArea('cuenta'); } catch (e) { toast(e.message, true); } });
   if ($('#dsv')) $('#dsv').onclick = async () => { try { const r = await api('cSave', { nombre: $('#dn').value.trim(), telefono: $('#dt').value.trim(), email: $('#de').value.trim() }); S.cuenta = r.cuenta; LS.set('cuenta', r.cuenta); toast('Datos guardados'); S.me = null; viewArea('cuenta'); } catch (x) { toast(x.message, true); } };
   if ($('#pwb')) $('#pwb').onclick = async () => { try { await api('cSave', { actual: $('#pa').value, password: $('#pn').value }); toast('Contraseña cambiada'); } catch (x) { toast(x.message, true); } };
   if ($('#out')) $('#out').onclick = () => { S.me = null; logout(); };

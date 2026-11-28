@@ -234,6 +234,11 @@ function contactSave_(d, u) {
     if (isNew) c = { id: 'p-' + uid_().slice(0, 8), notas: [], revisar: false, cliente: '', evento: '', carpeta: '', creado: iso_(), origen: 'Manual', ref: '' };
     ['nombre', 'tipo', 'contacto', 'telefono', 'email', 'vehiculo', 'ubicacion', 'prioridad', 'proxAccion', 'origen'].forEach(k => { if (d[k] !== undefined) c[k] = clean_(d[k], 200); });
     if (!clean_(c.nombre)) fail_('Indica el nombre.');
+    if (d.fase === 'Perdido' && c.fase !== 'Perdido') {
+      const motivo = clean_(d.motivo, 200);
+      if (!motivo) fail_('Indica el motivo por el que no contrata.');
+      c.notas = (c.notas || []).concat([note_(u, 'Perdido · motivo: ' + motivo, 'Nota')]);
+    }
     if (d.fase !== undefined) c.fase = FASES.indexOf(d.fase) >= 0 ? d.fase : 'Nuevo';
     if (!c.fase) c.fase = 'Nuevo';
     if (d.importe !== undefined) c.importe = d.importe === '' ? '' : money_(d.importe);

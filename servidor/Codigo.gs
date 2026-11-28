@@ -10,7 +10,7 @@
 
 const APP = {
   nombre: 'Efecto Mariposa · Operaciones',
-  version: '3.9.1',
+  version: '4.0.0',
   appUrl: 'https://efectomariposaclean-create.github.io/em-operaciones/',
   diasEnlace: 30,          // días que el enlace del particular sigue activo tras la entrega
   zona: 'Europe/Madrid',
@@ -28,7 +28,7 @@ const VEHICULOS = ['Autocaravana', 'Camper', 'Caravana', 'Coche', 'Furgoneta', '
 const PARTICULARES = 'PARTICULARES';
 const TIPOS_GENERAL = ['Interior completo', 'Interior profundo', 'Exterior', 'Integral completo', 'Integral profundo'];
 const TIPOS_K2 = ['Alquiler', 'Exposición', 'Entrega', 'Ocasión'];
-const EXTRAS = ['Extracción tapicerías', 'Colchones', 'Olores persistentes', 'Ozono', 'Desmontaje autorizado'];
+const EXTRAS = ['Extracción tapicerías', 'Colchones', 'Olores persistentes', 'Ozono', 'Desmontaje autorizado', 'Recuperación de plásticos', 'Frigorífico con exceso de suciedad'];
 const TIPOS_FOTO = ['Antes', 'Después', 'Exterior', 'Interior', 'Detalle', 'Incidencia', 'Firma'];
 const TIPOS_INCIDENCIA = ['Suciedad extraordinaria', 'Daño o avería', 'Zona inaccesible', 'Mancha persistente', 'Falta material', 'Otra incidencia'];
 
@@ -54,15 +54,16 @@ const SCHEMA = {
   Contactos:  ['id', 'nombre', 'tipo', 'contacto', 'telefono', 'email', 'vehiculo', 'ubicacion', 'fase', 'prioridad', 'proxAccion', 'proxFecha', 'origen', 'importe', 'notas', 'revisar', 'cliente', 'evento', 'carpeta', 'creado', 'actualizado', 'ref'],
   Facturas:   ['id', 'numero', 'fecha', 'cliente', 'datos', 'lineas', 'imponible', 'ivaPct', 'iva', 'retPct', 'ret', 'total', 'estado', 'cobros', 'vence', 'archivo', 'notas', 'servicios', 'origen', 'por', 'creado', 'anticipo'],
   Presupuestos:['id', 'numero', 'fecha', 'contacto', 'cliente', 'datos', 'lineas', 'imponible', 'ivaPct', 'iva', 'total', 'validez', 'estado', 'archivo', 'notas', 'por', 'creado'],
-  Cuentas:    ['id', 'email', 'nombre', 'telefono', 'hash', 'sal', 'tipo', 'cliente', 'contacto', 'rol', 'ofertas', 'bienvenida', 'tokenV', 'activo', 'creado', 'ultimo', 'procedencia'],
+  Cuentas:    ['id', 'email', 'nombre', 'telefono', 'hash', 'sal', 'tipo', 'cliente', 'contacto', 'rol', 'ofertas', 'bienvenida', 'tokenV', 'activo', 'creado', 'ultimo', 'procedencia', 'ayuda'],
   Monedero:   ['id', 'tipo', 'cliente', 'cuenta', 'nombre', 'codigo', 'visitas', 'usadas', 'saldo', 'inicial', 'caduca', 'para', 'de', 'email', 'notas', 'movs', 'creado', 'activo', 'usuario', 'total', 'pagado', 'ref', 'matricula', 'comp', 'estado'],
   Ofertas:    ['id', 'titulo', 'texto', 'pct', 'hasta', 'activa', 'enviada', 'n', 'creado'],
-  Solicitudes:['id', 'numero', 'fecha', 'cuenta', 'contacto', 'cliente', 'nombre', 'telefono', 'email', 'sel', 'vehiculo', 'resumen', 'lineas', 'manual', 'descuento', 'total', 'estado', 'fotos', 'chat', 'dia', 'propuesto', 'token', 'revisado', 'notas', 'carpeta', 'ofertas', 'evento', 'actualizado', 'vale', 'procedencia'],
+  Solicitudes:['id', 'numero', 'fecha', 'cuenta', 'contacto', 'cliente', 'nombre', 'telefono', 'email', 'sel', 'vehiculo', 'resumen', 'lineas', 'manual', 'descuento', 'total', 'estado', 'fotos', 'chat', 'dia', 'propuesto', 'token', 'revisado', 'notas', 'carpeta', 'ofertas', 'evento', 'actualizado', 'vale', 'procedencia', 'vehiculoId', 'matricula', 'servicio'],
+  Vehiculos:  ['id', 'cliente', 'cuenta', 'contacto', 'tipo', 'modelo', 'matricula', 'notas', 'creado', 'activo'],
   Contabilidad:['id', 'fecha', 'tipo', 'categoria', 'concepto', 'proveedor', 'imponible', 'ivaPct', 'iva', 'total', 'deducible', 'ivaDed', 'metodo', 'justificante', 'notas', 'origen', 'ref', 'por', 'creado']
 };
 const NOCACHE = { Articulos: 1, Movimientos: 1, Cargas: 1, Ubicaciones: 1 };
 const JSON_COLS = { tipos: 1, acceso: 1, extras: 1, grupos: 1, notas: 1, fases: 1, maquina: 1, recibo: 1, archivado: 1, resuelta: 1, descansos: 1, geo: 1, auditoria: 1, servicios: 1, antes: 1, despues: 1, avisos: 1, conformidad: 1, base: 1, segun: 1, no: 1, crm: 1, tarifa: 1, lineas: 1, cobros: 1, datos: 1, anticipo: 1, sel: 1, descuento: 1, fotos: 1, chat: 1, respuestas: 1, movs: 1, vale: 1, comp: 1 };
-const SCHEMA_V = '12';
+const SCHEMA_V = '13';
 const ARCHIVABLES = ['Servicios', 'Tiempos', 'Incidencias', 'Fotos', 'Jornadas', 'Cambios', 'Actividad'];
 
 /* ------------------------------------------------------------------ */
@@ -419,6 +420,7 @@ function sync_(d, u) {
   const visibleClients = clients.filter(c => c.activo !== false && canClient_(u, c));
   return {
     me: { id: u.id, nombre: u.nombre, rol: u.rol, horas: Number(u.horas) || 0, acceso: u.acceso, email: u.email || '', telefono: u.telefono || '' },
+    programados: typeof programados_ === 'function' ? programados_(u) : [],
     config: { extras: EXTRAS, tiposGeneral: TIPOS_GENERAL, tiposFoto: TIPOS_FOTO, tiposIncidencia: TIPOS_INCIDENCIA, vehiculos: VEHICULOS, version: APP.version },
     clients: visibleClients.map(c => ({ id: c.id, nombre: c.nombre, tipo: c.tipo, protocolo: c.protocolo, tipos: c.tipos || TIPOS_GENERAL, revisor: c.revisor, contacto: u.rol === 'admin' ? c.contacto : '', telefono: u.rol === 'admin' ? c.telefono : '', email: u.rol === 'admin' ? c.email : '', avisos: c.avisos !== false, activo: c.activo !== false })),
     team: users.filter(x => x.activo || u.rol === 'admin').map(publicUser_),
@@ -666,6 +668,7 @@ function createService_(d, u) {
   return locked_(() => {
     let clients = read_('Clientes');
     let client;
+    if (d.solicitud && typeof solClient_ === 'function') { d.cliente = solClient_(d.solicitud, u); d.newClient = null; clients = read_('Clientes'); }
     if (d.newClient) {
       const nombre = clean_(d.newClient.nombre, 120);
       if (!nombre) fail_('Indica el nombre del cliente.');
@@ -705,6 +708,7 @@ function createService_(d, u) {
     insert_('Tiempos', { id: uid_(), servicio: id, usuario: u.id, tipo: 'Trabajo', inicio: at, fin: '', motivo: '' });
     refreshStatus_(changed);
     log_(u, id, 'crear servicio');
+    if (d.solicitud && typeof solLink_ === 'function') solLink_(d.solicitud, id);
     return { id: id };
   });
 }
@@ -832,6 +836,7 @@ function serviceOp_(d, u) {
     if (!s.cerrado && !s.listo && etapa_(s) === 'Listo') { s.listo = at; notify_('listo', s); }
     if (op === 'close') notify_('entregado', s);
     update_('Servicios', s);
+    if (op === 'close' && typeof solDelivered_ === 'function') solDelivered_(s, u);
     refreshStatus_(related.filter(id => id !== s.id));
     if (req) done.put('r:' + req, '1', 21600);
     log_(u, s.id, op);

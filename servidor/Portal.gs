@@ -201,6 +201,7 @@ function pRegister_(d) {
     if (cl && fillFicha_(cl, a)) update_('Clientes', cl);
     read_('Solicitudes').filter(s => s.email === mail && !s.cuenta).forEach(s => {
       s.cuenta = a.id;
+      if (s.vehiculoId) { const v = read_('Vehiculos').find(x => x.id === s.vehiculoId); if (v && !v.cuenta) { v.cuenta = a.id; update_('Vehiculos', v); } }
       if (['Recibida', 'Presupuesto revisado'].indexOf(s.estado) >= 0) recalc_(s, a);
       s.actualizado = iso_();
       update_('Solicitudes', s);
@@ -288,7 +289,7 @@ function solOut_(s, acc) {
   return {
     t: s.token, numero: s.numero, fecha: s.fecha, estado: s.estado, resumen: s.resumen, nombre: s.nombre,
     lineas: s.lineas, bruto: bruto, descuento: s.descuento, total: s.total, vale: s.vale && s.vale.codigo ? { codigo: s.vale.codigo, imp: s.vale.imp } : null, pagar: r2_(s.total - (s.vale && s.vale.imp || 0)), revisado: s.revisado, dia: dd_(s.dia), propuesto: dd_(s.propuesto),
-    lugar: P_PLACES[Number(s.sel && s.sel.w)] || '', vehiculo: s.vehiculo,
+    lugar: P_PLACES[Number(s.sel && s.sel.w)] || '', vehiculo: s.vehiculo, matricula: s.matricula || '', servicio: s.servicio || '',
     fotos: (s.fotos || []).map(f => ({ id: f.id, slot: f.slot })),
     chat: (s.chat || []).map(m => ({ at: m.at, de: m.de, texto: m.texto })),
     cuenta: !!(s.cuenta || acc),
@@ -349,7 +350,13 @@ function pRequest_(d) {
       vale = { codigo: vm.codigo, imp: 0 };
       if (!vm.usuario) { vm.usuario = email; vm.movs = (vm.movs || []).concat([{ at: iso_(), texto: 'Indicado en la solicitud ' + numero + ' por ' + nombre }]); if (acc) vm.cuenta = acc.id; update_('Monedero', vm); }
     }
-    const s = { vale: vale, id: uid_(), numero: numero, fecha: iso_(), cuenta: acc ? acc.id : '', contacto: contacto, cliente: cl ? cl.id : '', nombre: nombre, telefono: tel, email: email,
+    let vehId = '', vMat = String(d.matricula || '').toUpperCase().trim().slice(0, 20);
+    if (!info) {
+      const vSel = d.vehiculoId && acc ? read_('Vehiculos').find(x => x.id === d.vehiculoId && x.activo !== false && (x.cuenta === acc.id || (acc.cliente && x.cliente === acc.cliente))) : null;
+      const v = vSel || vehAdd_({ cliente: cl ? cl.id : '', cuenta: acc ? acc.id : '', contacto: contacto, tipo: veh, modelo: clean_(d.modelo, 80), matricula: vMat });
+      vehId = v.id; vMat = v.matricula || vMat;
+    }
+    const s = { vehiculoId: vehId, matricula: vMat, servicio: '', vale: vale, id: uid_(), numero: numero, fecha: iso_(), cuenta: acc ? acc.id : '', contacto: contacto, cliente: cl ? cl.id : '', nombre: nombre, telefono: tel, email: email,
       sel: sel, vehiculo: [veh, clean_(d.modelo, 80)].filter(Boolean).join(' · '), resumen: p.resumen, lineas: p.lineas, manual: 0, descuento: null, total: 0,
       estado: 'Recibida', fotos: [], chat: clean_(d.notas, 600) ? [{ at: iso_(), de: 'cliente', texto: clean_(d.notas, 600) }] : [], dia: '', propuesto: '', token: 't' + secret_(), revisado: '', notas: '', carpeta: '', ofertas: !!d.ofertas, actualizado: iso_(), procedencia: o.texto };
     recalc_(s, acc);
@@ -447,12 +454,12 @@ function pAccept_(d) {
 
 function solAdmin_(s) {
   const o = solOut_(s);
-  o.id = s.id; o.telefono = s.telefono; o.email = s.email; o.contacto = s.contacto; o.cliente = s.cliente; o.sel = s.sel; o.manual = s.manual || 0; o.notas = s.notas; o.cuentaId = s.cuenta; o.procedencia = s.procedencia || '';
+  o.id = s.id; o.telefono = s.telefono; o.email = s.email; o.contacto = s.contacto; o.cliente = s.cliente; o.sel = s.sel; o.manual = s.manual || 0; o.notas = s.notas; o.cuentaId = s.cuenta; o.vehiculoId = s.vehiculoId || ''; o.servicioId = s.servicio || ''; o.procedencia = s.procedencia || '';
   return o;
 }
 function solList_(d, u) {
   admin_(u);
-  return read_('Solicitudes').sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 300).map(s => ({ id: s.id, numero: s.numero, fecha: s.fecha, nombre: s.nombre, resumen: s.resumen, estado: s.estado, total: s.total, fotos: (s.fotos || []).length, dia: dd_(s.dia), propuesto: dd_(s.propuesto), nuevo: (s.chat || []).length && s.chat[s.chat.length - 1].de === 'cliente' }));
+  return read_('Solicitudes').sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 300).map(s => ({ id: s.id, numero: s.numero, fecha: s.fecha, nombre: s.nombre, resumen: s.resumen, estado: s.estado, total: s.total, fotos: (s.fotos || []).length, dia: dd_(s.dia), propuesto: dd_(s.propuesto), nuevo: (s.chat || []).length && s.chat[s.chat.length - 1].de === 'cliente', contacto: s.contacto || '', cliente: s.cliente || '', servicio: s.servicio || '' }));
 }
 function solGet_(d, u) {
   admin_(u);
@@ -517,15 +524,10 @@ function solState_(d, u) {
   admin_(u);
   const estado = String(d.estado || '');
   if (P_ESTADOS.indexOf(estado) < 0) fail_('Estado no válido.');
-  let s = read_('Solicitudes').find(x => x.id === d.id);
-  if (!s) fail_('Solicitud no encontrada.');
-  if (estado === 'Hecha' && !s.cliente && s.contacto) {
-    const r = contactConvert_({ id: s.contacto }, u);
-    s = read_('Solicitudes').find(x => x.id === d.id); s.cliente = r.cliente;
-  }
   return locked_(() => {
     const cur = read_('Solicitudes').find(x => x.id === d.id);
-    cur.cliente = s.cliente || cur.cliente;
+    if (!cur) fail_('Solicitud no encontrada.');
+    if (estado === 'Hecha') { solDoneCore_(cur, u); update_('Solicitudes', cur); return solAdmin_(cur); }
     cur.estado = estado; cur.actualizado = iso_();
     if (estado === 'Programada') {
       const dia = dayOk_(d.dia) || dd_(cur.propuesto);
@@ -534,19 +536,7 @@ function solState_(d, u) {
       cur.chat = (cur.chat || []).concat([{ at: iso_(), de: 'sistema', texto: 'Servicio confirmado para el ' + dia.split('-').reverse().join('/') + '.' }]);
       cur.evento = calService_(cur.evento, dia, cur);
       pmail_(cur.email, 'Servicio confirmado · ' + dia.split('-').reverse().join('/'), 'Tu servicio está confirmado', ['Hola, ' + esc_(cur.nombre.split(' ')[0]) + ':', 'Te esperamos el <b>' + dia.split('-').reverse().join('/') + '</b> · ' + esc_(P_PLACES[Number(cur.sel && cur.sel.w)] || '') + '.', 'Total: <b>' + eurP_(cur.total) + '</b> (IVA incluido). El día antes te recordamos cómo dejarlo preparado.'], 'Ver mi solicitud', clientUrl_() + '#s=' + cur.token, 'Confirmado');
-    }
-    if (estado === 'Hecha' && cur.vale && cur.vale.codigo && !cur.vale.usado) {
-      const vm = valeFind_(cur.vale.codigo);
-      const imp = vm ? r2_(Math.min(Number(vm.saldo), cur.vale.imp || 0)) : 0;
-      if (vm && imp > 0) { vm.saldo = r2_(Number(vm.saldo) - imp); vm.cliente = vm.cliente || cur.cliente; vm.movs = (vm.movs || []).concat([{ at: iso_(), texto: 'Usado en ' + cur.numero + ' (' + cur.nombre + ')', imp: -imp }]); update_('Monedero', vm); }
-      cur.vale.imp = imp; cur.vale.usado = iso_();
-    }
-    if (estado === 'Hecha' && cur.cuenta && cur.descuento && /Bienvenida/.test(cur.descuento.n)) {
-      const a = read_('Cuentas').find(x => x.id === cur.cuenta);
-      if (a && !a.bienvenida) { a.bienvenida = iso_(); a.cliente = cur.cliente || a.cliente; update_('Cuentas', a); }
-    } else if (estado === 'Hecha' && cur.cuenta) {
-      const a = read_('Cuentas').find(x => x.id === cur.cuenta);
-      if (a && !a.cliente) { a.cliente = cur.cliente; update_('Cuentas', a); }
+      if (cur.contacto) { const c = read_('Contactos').find(x => x.id === cur.contacto); if (c && ['Ganado', 'Perdido', 'Archivado'].indexOf(c.fase) < 0) { c.fase = 'Negociando'; c.proxAccion = 'Servicio programado ' + dia.split('-').reverse().join('/'); c.proxFecha = dia; c.actualizado = iso_(); update_('Contactos', c); } }
     }
     if ((estado === 'Rechazada' || estado === 'Cancelada') && cur.contacto) {
       const c = read_('Contactos').find(x => x.id === cur.contacto);
@@ -556,6 +546,104 @@ function solState_(d, u) {
     return solAdmin_(cur);
   });
 }
+
+/* ================================================================== */
+/* Hilo único: solicitud → servicio → entrega → cliente                */
+/* (estas funciones se llaman ya dentro de un bloqueo)                 */
+/* ================================================================== */
+
+/** Crea la ficha de cliente a partir del prospecto (sin marcarlo aún como ganado). */
+function clientFromContact_(c, u) {
+  const clients = read_('Clientes');
+  let cl = clients.find(x => (c.telefono && norm_(x.telefono) === norm_(c.telefono)) || (c.email && emailsOf_(x).indexOf(String(c.email).toLowerCase()) >= 0));
+  if (!cl) {
+    const empresa = c.tipo && c.tipo !== 'Particular';
+    cl = { id: 'c-' + uid_().slice(0, 8), nombre: c.nombre, tipo: empresa ? 'empresa' : 'particular', protocolo: 'general', tipos: TIPOS_GENERAL, contacto: c.contacto || c.nombre, telefono: c.telefono || '', email: c.email || '', revisor: '', carpeta: '', activo: true, creado: iso_(), avisos: true, nif: '', direccion: '', ritmo: '', ultimo: '', crm: { notas: (c.notas || []).concat([note_(u, 'Ficha creada desde el prospecto para su primer servicio.', 'Nota')]) }, tarifa: {} };
+    insert_('Clientes', cl);
+  }
+  c.cliente = cl.id; c.actualizado = iso_();
+  update_('Contactos', c);
+  return cl.id;
+}
+/** Para empezar el servicio de una solicitud: devuelve el cliente (creando su ficha si hace falta). */
+function solClient_(solId, u) {
+  const s = read_('Solicitudes').find(x => x.id === solId);
+  if (!s) fail_('Solicitud no encontrada.');
+  if (!s.cliente) {
+    const c = s.contacto ? read_('Contactos').find(x => x.id === s.contacto) : null;
+    s.cliente = c ? (c.cliente || clientFromContact_(c, u)) : clientFromContact_({ nombre: s.nombre, telefono: s.telefono, email: s.email, tipo: 'Particular', notas: [] }, u);
+    update_('Solicitudes', s);
+  }
+  if (s.cuenta) { const a = read_('Cuentas').find(x => x.id === s.cuenta); if (a && !a.cliente) { a.cliente = s.cliente; update_('Cuentas', a); } }
+  if (s.vehiculoId) { const v = read_('Vehiculos').find(x => x.id === s.vehiculoId); if (v && !v.cliente) { v.cliente = s.cliente; update_('Vehiculos', v); } }
+  return s.cliente;
+}
+function solLink_(solId, serviceId) {
+  const s = read_('Solicitudes').find(x => x.id === solId);
+  if (!s) return;
+  s.servicio = serviceId; s.actualizado = iso_();
+  s.chat = (s.chat || []).concat([{ at: iso_(), de: 'sistema', texto: '¡Empezamos! Ya puedes seguir tu servicio en directo desde tu área.' }]);
+  update_('Solicitudes', s);
+}
+/** Cierre de la solicitud: vale, bienvenida, cuenta y prospecto → cliente. */
+function solDoneCore_(cur, u) {
+  if (!cur.cliente) {
+    const c = cur.contacto ? read_('Contactos').find(x => x.id === cur.contacto) : null;
+    cur.cliente = c ? (c.cliente || clientFromContact_(c, u)) : '';
+  }
+  cur.estado = 'Hecha'; cur.actualizado = iso_();
+  if (cur.vale && cur.vale.codigo && !cur.vale.usado) {
+    const vm = valeFind_(cur.vale.codigo);
+    const imp = vm ? r2_(Math.min(Number(vm.saldo), cur.vale.imp || 0)) : 0;
+    if (vm && imp > 0) { vm.saldo = r2_(Number(vm.saldo) - imp); vm.cliente = vm.cliente || cur.cliente; vm.movs = (vm.movs || []).concat([{ at: iso_(), texto: 'Usado en ' + cur.numero + ' (' + cur.nombre + ')', imp: -imp }]); update_('Monedero', vm); }
+    cur.vale.imp = imp; cur.vale.usado = iso_();
+  }
+  if (cur.cuenta) {
+    const a = read_('Cuentas').find(x => x.id === cur.cuenta);
+    if (a) { if (cur.descuento && /Bienvenida/.test(cur.descuento.n) && !a.bienvenida) a.bienvenida = iso_(); if (!a.cliente) a.cliente = cur.cliente; update_('Cuentas', a); }
+  }
+  if (cur.contacto) {
+    const c = read_('Contactos').find(x => x.id === cur.contacto);
+    if (c && c.fase !== 'Ganado') { c.fase = 'Ganado'; c.cliente = c.cliente || cur.cliente; c.proxFecha = ''; c.notas = (c.notas || []).concat([note_(u && u.nombre ? u : null, 'Primer servicio entregado (' + cur.numero + '): ya es cliente.', 'Nota')]); c.actualizado = iso_(); c.evento = calFollow_(c.evento, '', '', c.nombre, ''); update_('Contactos', c); }
+  }
+}
+/** Se llama al entregar un servicio (firma del equipo o del cliente). */
+function solDelivered_(svc, u) {
+  const s = read_('Solicitudes').find(x => x.servicio === svc.id && x.estado !== 'Hecha');
+  if (!s) return;
+  solDoneCore_(s, u);
+  s.chat = (s.chat || []).concat([{ at: iso_(), de: 'sistema', texto: 'Servicio entregado. ¡Gracias por confiar en Efecto Mariposa!' }]);
+  update_('Solicitudes', s);
+}
+/** Traduce lo que contrató el cliente al servicio de operaciones (tipo, extras, alcance). */
+function solToService_(s) {
+  const sel = s.sel || {}, coche = sel.tipo === 'coche';
+  const inten = coche ? Number(sel.s) >= 2 : Number(sel.s) === 2;
+  const ext = coche ? [1, 3].indexOf(Number(sel.s)) >= 0 : Number(sel.ex) > 0;
+  const tipo = (ext ? 'Integral ' : 'Interior ') + (inten ? 'profundo' : 'completo');
+  const xt = (Array.isArray(sel.xt) ? sel.xt : []).map(x => ({ 49: 'oz', 59: 'pl', 39: 'fr' }[x] || String(x)));
+  const extras = [];
+  if (!coche && (Number(sel.seat) || inten)) extras.push('Extracción tapicerías');
+  if (coche && (sel.ex || []).indexOf('tap') >= 0) extras.push('Extracción tapicerías');
+  if (Number(sel.bed)) extras.push('Colchones');
+  if (inten || xt.indexOf('oz') >= 0) extras.push('Ozono');
+  if (inten && !coche && Number(sel.v) >= 5) extras.push('Desmontaje autorizado');
+  if (xt.indexOf('pl') >= 0) extras.push('Recuperación de plásticos');
+  if (xt.indexOf('fr') >= 0) extras.push('Frigorífico con exceso de suciedad');
+  const veh = coche ? 'Coche' : Number(sel.v) <= 2 ? 'Camper' : Number(sel.v) <= 4 ? 'Caravana' : 'Autocaravana';
+  const v = s.vehiculoId ? read_('Vehiculos').find(x => x.id === s.vehiculoId) : null;
+  return { tipo: tipo, extras: extras, exterior: ext, vehiculo: veh, suciedad: ['Normal', 'Elevado', 'Intensivo'][Number(sel.st) || 0],
+    matricula: (v && v.matricula) || s.matricula || '', modelo: (v && v.modelo) || '',
+    alcance: s.numero + ' · ' + s.resumen + (s.lineas || []).filter(l => !/^(Interior|Mantenimiento)/.test(l.c)).map(l => '\n· ' + l.c).join('') };
+}
+/** Servicios programados (aún sin empezar) para la pantalla de Servicio nuevo e Inicio. Sin precios. */
+function programados_(u) {
+  if (u.rol !== 'admin' && (u.acceso || []).indexOf(PARTICULARES) < 0) return [];
+  const lim = shift_(day_(), 7);
+  return read_('Solicitudes').filter(s => s.estado === 'Programada' && !s.servicio && dd_(s.dia) && dd_(s.dia) <= lim).sort((a, b) => dd_(a.dia).localeCompare(dd_(b.dia)))
+    .map(s => Object.assign({ id: s.id, numero: s.numero, nombre: s.nombre, telefono: s.telefono, dia: dd_(s.dia), cliente: s.cliente || '', lugar: P_PLACES[Number(s.sel && s.sel.w)] || '' }, solToService_(s)));
+}
+
 function calService_(eventId, dia, s) {
   const cal = cal_();
   if (!cal) return eventId || '';
@@ -590,6 +678,7 @@ Object.assign(PORTAL_ACTIONS, {
 function portalMigrate_() {
   try {
     if (!ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'limpiarFotos')) ScriptApp.newTrigger('limpiarFotos').timeBased().everyDays(1).atHour(4).create();
+    if (!ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'tareasPortal')) ScriptApp.newTrigger('tareasPortal').timeBased().everyHours(1).create();
   } catch (e) { console.error('Trigger limpiarFotos: ' + e); }
 }
 
@@ -638,6 +727,7 @@ function cMe_(d, u, req) {
       return { id: s.id, matricula: o.matricula || o.chasis, vehiculo: [o.vehiculo, o.marca, o.modelo].filter(Boolean).join(' · '), tipo: o.tipo, etapa: o.etapa, aviso: o.aviso, creado: o.creado, cerrado: o.cerrado, albaran: o.recibo ? o.recibo.numero : '', link: linkOk_(s) && s.enlace ? linkOf_(s) : '', fotosHasta: s.cerrado ? new Date(Date.parse(s.cerrado) + RET_DIAS.particular * 864e5).toISOString() : '' };
     }),
     facturas: facturas.map(f => ({ id: f.id, numero: f.numero, fecha: dd_(f.fecha), total: Number(f.total) || 0, estado: f.estado })),
+    vehiculos: read_('Vehiculos').filter(v => v.activo !== false && (v.cuenta === a.id || (cid && v.cliente === cid))).map(vehOut_),
     monedero: wallet.map(walletOut_),
     pago: wallet.some(m => m.tipo === 'bono' && m.estado === 'Pendiente de pago') ? pagoInfo_() : null,
     ofertas: ofertasActivas_()
@@ -722,6 +812,7 @@ function signByClient_(sid, d, who) {
     s.recibo.canal = who.canal;
     notify_('entregado', s);
     update_('Servicios', s);
+    solDelivered_(s, null);
     log_({ id: who.id }, s.id, 'firma del cliente (' + who.canal + ')');
     return { ok: true, numero: s.recibo.numero };
   });
@@ -944,7 +1035,8 @@ const BONO_COMPO = {
 };
 const BONO_DTO = { Escapadas: 7, Temporadas: 10, 'Siempre a punto': 12 };
 const SRV_N = ['Mantenimiento', 'Limpieza estándar', 'Limpieza intensiva'];
-Object.assign(PORTAL_OPEN, { cBonoPedir: 1, cBonoAviso: 1 });
+Object.assign(PORTAL_OPEN, { cBonoPedir: 1, cBonoAviso: 1, cVehSave: 1 });
+Object.assign(PORTAL_ACTIONS, { cVehSave: cVehSave_, vehSave: vehSave_, vehList: vehList_, atender: atender_ });
 Object.assign(PORTAL_ACTIONS, { cBonoPedir: cBonoPedir_, cBonoAviso: cBonoAviso_, walletPago: walletPago_ });
 
 function bonoCalc_(d) {
@@ -1022,4 +1114,99 @@ function walletPago_(d, u) {
     update_('Monedero', m);
     return walletOut_(m);
   });
+}
+
+
+/* ================================================================== */
+/* Vehículos de cada cliente                                           */
+/* ================================================================== */
+
+function vehOut_(v) { return { id: v.id, tipo: v.tipo, modelo: v.modelo || '', matricula: v.matricula || '', cliente: v.cliente || '' }; }
+function vehAdd_(o) {
+  const all = read_('Vehiculos'), mat = String(o.matricula || '').toUpperCase().replace(/\s+/g, ' ').trim();
+  let v = mat ? all.find(x => x.activo !== false && norm_(x.matricula) === norm_(mat) && ((o.cliente && x.cliente === o.cliente) || (o.cuenta && x.cuenta === o.cuenta))) : null;
+  if (v) { ['cliente', 'cuenta', 'contacto'].forEach(k => { if (!v[k] && o[k]) v[k] = o[k]; }); if (o.modelo && !v.modelo) v.modelo = o.modelo; update_('Vehiculos', v); return v; }
+  v = { id: 'v-' + uid_().slice(0, 8), cliente: o.cliente || '', cuenta: o.cuenta || '', contacto: o.contacto || '', tipo: clean_(o.tipo, 60), modelo: clean_(o.modelo, 80), matricula: mat, notas: '', creado: iso_(), activo: true };
+  insert_('Vehiculos', v);
+  return v;
+}
+function cVehSave_(d, u, req) {
+  const a = csession_(req);
+  noPreview_(a);
+  const cid = accClient_(a);
+  return locked_(() => {
+    if (d.id) {
+      const v = read_('Vehiculos').find(x => x.id === d.id && (x.cuenta === a.id || (cid && x.cliente === cid)));
+      if (!v) fail_('Vehículo no encontrado.');
+      if (d.borrar) v.activo = false;
+      else { if (d.modelo !== undefined) v.modelo = clean_(d.modelo, 80); if (d.matricula !== undefined) v.matricula = String(d.matricula || '').toUpperCase().trim(); if (d.tipo) v.tipo = clean_(d.tipo, 60); }
+      update_('Vehiculos', v);
+      return vehOut_(v);
+    }
+    if (!clean_(d.tipo, 60)) fail_('Elige el tipo de vehículo.');
+    return vehOut_(vehAdd_({ cliente: cid, cuenta: a.id, tipo: d.tipo, modelo: d.modelo, matricula: d.matricula }));
+  });
+}
+function vehList_(d, u) {
+  admin_(u);
+  return read_('Vehiculos').filter(v => v.activo !== false && ((d.cliente && v.cliente === d.cliente) || (d.contacto && v.contacto === d.contacto))).map(vehOut_);
+}
+function vehSave_(d, u) {
+  admin_(u);
+  return locked_(() => {
+    if (d.id) {
+      const v = read_('Vehiculos').find(x => x.id === d.id);
+      if (!v) fail_('Vehículo no encontrado.');
+      if (d.borrar) v.activo = false;
+      else { ['modelo', 'tipo'].forEach(k => { if (d[k] !== undefined) v[k] = clean_(d[k], 80); }); if (d.matricula !== undefined) v.matricula = String(d.matricula || '').toUpperCase().trim(); }
+      update_('Vehiculos', v);
+      return vehOut_(v);
+    }
+    return vehOut_(vehAdd_({ cliente: clean_(d.cliente, 60), contacto: clean_(d.contacto, 60), tipo: d.tipo, modelo: d.modelo, matricula: d.matricula }));
+  });
+}
+
+/* ================================================================== */
+/* Para atender hoy (Inicio de dirección)                              */
+/* ================================================================== */
+
+function atender_(d, u) {
+  admin_(u);
+  const sols = read_('Solicitudes'), accs = read_('Cuentas'), cs = read_('Contactos'), hoy = day_(), now = Date.now();
+  const mini = s => ({ id: s.id, numero: s.numero, nombre: s.nombre, resumen: s.resumen, total: s.total, propuesto: dd_(s.propuesto), dia: dd_(s.dia), fecha: s.fecha });
+  const conSol = {}; sols.forEach(s => { if (s.cuenta) conSol[s.cuenta] = 1; if (s.email) conSol[s.email] = 1; });
+  const sinSol = accs.filter(a => a.activo !== false && !a.cliente && !conSol[a.id] && !conSol[a.email] && now - Date.parse(a.creado) > 864e5 && now - Date.parse(a.creado) < 14 * 864e5)
+    .map(a => { const c = cs.find(x => x.id === a.contacto); return { cuenta: a.id, nombre: a.nombre, telefono: a.telefono, email: a.email, contacto: a.contacto || '', creado: a.creado, ayuda: a.ayuda || '', cerrado: c && ['Perdido', 'Archivado', 'Ganado'].indexOf(c.fase) >= 0 }; }).filter(x => !x.cerrado);
+  return {
+    aceptadas: sols.filter(s => s.estado === 'Aceptada').map(mini),
+    nuevas: sols.filter(s => s.estado === 'Recibida').map(mini),
+    mensajes: sols.filter(s => ['Hecha', 'Rechazada', 'Cancelada'].indexOf(s.estado) < 0 && (s.chat || []).length && s.chat[s.chat.length - 1].de === 'cliente').map(mini),
+    programadas: sols.filter(s => s.estado === 'Programada' && !s.servicio && dd_(s.dia) && dd_(s.dia) <= shift_(hoy, 1)).map(mini),
+    bonos: read_('Monedero').filter(m => m.tipo === 'bono' && m.activo !== false && m.estado === 'Pendiente de pago').map(m => ({ id: m.id, ref: m.ref, nombre: m.nombre, total: Number(m.total) || 0, email: m.email })),
+    sinSolicitud: sinSol,
+    nuevosHoy: cs.filter(c => day_(c.creado) === hoy && !c.cliente).map(c => ({ id: c.id, nombre: c.nombre, origen: c.origen, telefono: c.telefono }))
+  };
+}
+
+/* ================================================================== */
+/* Tareas automáticas cada hora: ayuda a quien creó cuenta y no pidió  */
+/* presupuesto (un único correo, a las 24 horas)                        */
+/* ================================================================== */
+
+function tareasPortal() {
+  const now = Date.now();
+  const sols = read_('Solicitudes'), con = {};
+  sols.forEach(s => { if (s.cuenta) con[s.cuenta] = 1; if (s.email) con[s.email] = 1; });
+  const objetivo = read_('Cuentas').filter(a => a.activo !== false && !a.ayuda && !a.cliente && !con[a.id] && !con[a.email] && now - Date.parse(a.creado) > 864e5 && now - Date.parse(a.creado) < 7 * 864e5);
+  objetivo.slice(0, 30).forEach(a => {
+    pmail_(a.email, '¿Te ayudamos con tu presupuesto?', '¿Te echamos una mano?', ['Hola, ' + esc_(String(a.nombre).split(' ')[0]) + ':', 'Ayer creaste tu cuenta en Efecto Mariposa, ¡gracias! Vemos que aún no has pedido tu presupuesto.', 'Si tienes alguna duda o algo no te ha funcionado, respóndenos a este correo o llámanos al <b>614 065 526</b> y te ayudamos encantados.', 'Recuerda: tienes un <b>−10 % en tu primer servicio</b> (desde 150 €).'], 'Pedir mi presupuesto', clientUrl_() + '#nuevo', 'Te ayudamos');
+    locked_(() => {
+      const x = read_('Cuentas').find(y => y.id === a.id); if (!x || x.ayuda) return;
+      x.ayuda = iso_(); update_('Cuentas', x);
+      const c = x.contacto ? read_('Contactos').find(y => y.id === x.contacto) : null;
+      if (c && ['Perdido', 'Archivado', 'Ganado'].indexOf(c.fase) < 0) { c.proxAccion = 'Llamar: creó cuenta y no ha pedido presupuesto'; c.proxFecha = day_(); c.notas = (c.notas || []).concat([note_(null, 'Enviado correo automático de ayuda (24 h sin pedir presupuesto).', 'Correo')]); c.actualizado = iso_(); c.evento = calFollow_(c.evento, c.proxFecha, c.proxAccion, c.nombre, c.telefono); update_('Contactos', c); }
+    });
+  });
+  flushMail_();
+  return objetivo.length;
 }
