@@ -3,7 +3,7 @@
 'use strict';
 
 const CFG = window.EM_CONFIG || {};
-const VERSION = '4.2.3';
+const VERSION = '4.2.4';
 const ROOT = document.getElementById('root');
 
 /* ============================ Utilidades ============================ */

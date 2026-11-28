@@ -141,8 +141,11 @@ function csession_(req) {
     if (!p || p.e < Date.now()) fail_('SESION');
     const c = clientById_(read_('Clientes'), p.c);
     if (!c) fail_('SESION');
-    const acc = read_('Cuentas').find(a => a.cliente === c.id);
-    return { id: acc ? acc.id : 'preview', cliente: c.id, nombre: c.nombre, email: acc ? acc.email : (emailsOf_(c)[0] || ''), telefono: c.telefono || '', ofertas: acc ? acc.ofertas : false, bienvenida: 'x', preview: true };
+    const accs = read_('Cuentas').filter(a => a.activo !== false), mails = emailsOf_(c);
+    const acc = accs.find(a => a.cliente === c.id && a.tipo !== 'empresa') || accs.find(a => a.colab === c.id) || accs.find(a => a.tipo !== 'empresa' && mails.indexOf(a.email) >= 0) || null;
+    const colab = c.colab && c.colab.activo ? c.id : '';
+    if (acc) return Object.assign({}, acc, { cliente: acc.cliente || c.id, colab: acc.colab || colab, tipo: acc.tipo === 'empresa' ? 'particular' : (acc.tipo || 'particular'), bienvenida: 'x', preview: true });
+    return { id: 'preview', tipo: colab && c.colab.solo ? 'colaborador' : 'particular', colab: colab, cliente: c.id, nombre: c.nombre, email: mails[0] || '', telefono: c.telefono || '', ofertas: false, bienvenida: 'x', preview: true };
   }
   return cparse_(t, 's');
 }
