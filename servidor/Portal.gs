@@ -1338,6 +1338,10 @@ function inviteAccount_(o) {
     a.activo = true;
     update_('Cuentas', a);
   }
+  if (a.hash && o.tipo === 'colaborador') {   // ya tiene contraseña: solo le avisamos de la nueva pestaña
+    pmail_(email, 'Ya eres colaborador de Efecto Mariposa', 'Tienes tu área de colaborador', ['Hola, ' + esc_(String(o.nombre || a.nombre).split(' ')[0]) + ':', 'Desde ahora, en tu área de cliente verás la pestaña <b>Colaborador</b> con tu enlace, tu QR, tus comisiones y tus objetivos.', 'Entra con tu correo y tu contraseña de siempre.'], 'Entrar en mi área', clientUrl_() + '#area', 'Colaborador');
+    return a;
+  }
   const quien = o.tipo === 'empresa' ? 'el portal de ' + esc_(o.empresa || 'tu empresa') : 'tu área de colaborador';
   pmail_(email, 'Tu acceso a Efecto Mariposa', 'Te damos acceso a ' + quien, ['Hola, ' + esc_(String(o.nombre).split(' ')[0]) + ':',
     o.tipo === 'empresa' ? 'Desde ahora entras con tu correo y una contraseña. Verás vuestros vehículos en directo, fotos, incidencias, albaranes' + (o.permiso === 'responsable' ? ', facturas y vuestra tarifa' : '') + ', y podrás pedir servicios.' : 'Verás los clientes que nos has recomendado, tus comisiones, tus objetivos y tu enlace para compartir.',

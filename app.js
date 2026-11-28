@@ -3,7 +3,7 @@
 'use strict';
 
 const CFG = window.EM_CONFIG || {};
-const VERSION = '4.2.2';
+const VERSION = '4.2.3';
 const ROOT = document.getElementById('root');
 
 /* ============================ Utilidades ============================ */
@@ -3337,7 +3337,16 @@ function mountColab(el, c) {
       '<div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">' + (x.pendiente > 0 ? '<button class="btn sm green" id="cliq">' + icon('check', 's') + 'Liquidar ' + money(x.pendiente) + '</button>' : '') + '<button class="btn sm soft" id="cacc">' + icon('mail', 's') + (x.acceso ? 'Reenviar acceso' : 'Dar acceso a su área') + '</button></div>' + (x.acceso ? '<p class="tiny muted" style="margin-top:4px">Acceso: ' + esc(x.acceso) + '</p>' : '');
     $('#ccopy', b).onclick = () => (navigator.clipboard ? navigator.clipboard.writeText(x.enlace) : Promise.reject()).then(() => toast('Enlace copiado'), () => promptSheet('Enlace', 'Cópialo', { placeholder: x.enlace }));
     const lq = $('#cliq', b); if (lq) lq.onclick = async () => { if (!(await confirmSheet('Liquidar comisiones', 'Se marcan como pagadas ' + money(x.pendiente) + ', se guarda el PDF de la liquidación y le avisamos para que te envíe su factura.', 'Liquidar'))) return; let r; if (await command(async () => { r = await api('colabLiquidar', { id: c.id }, 90000); }, '')) { toast('Liquidación ' + r.ref + ' · ' + money(r.total)); render(); } };
-    $('#cacc', b).onclick = async () => { const e = await promptSheet('Acceso del colaborador', 'Correo con el que entrará', { placeholder: x.acceso || c.email || 'correo@ejemplo.com', ok: 'Enviar invitación' }); if (e === null) return; let r; if (await command(async () => { r = await api('invitar', { cliente: c.id, email: e || x.acceso || c.email }); await loadCrm(true); }, '')) { toast('Invitación enviada a ' + r.email); render(); } };
+    $('#cacc', b).onclick = () => {
+      const gente = (S.data.users || []).filter(w => w.rol === 'cliente' && w.activo !== false && w.email && (w.acceso || []).indexOf(c.id) >= 0);
+      sheet('Acceso de colaborador', '<p class="small muted" style="margin-top:0">Elige con qué correo verá su pestaña <b>Colaborador</b> en el área de clientes. Si ya entra con ese correo (por ejemplo, al portal de su flota), usa el mismo: tendrá las dos cosas en una sola cuenta.</p>' +
+        (gente.length ? '<label class="f">Personas de ' + esc(c.nombre) + ' que ya tienen acceso</label>' + gente.map(w => '<button type="button" class="btn ghost wide" data-em="' + esc(w.email) + '" style="margin-top:6px;justify-content:flex-start">' + icon('user', 's') + esc(w.nombre) + ' · ' + esc(w.email) + '</button>').join('') : '') +
+        '<label class="f">Otro correo</label><input class="in" id="aem" type="email" placeholder="' + esc(x.acceso || c.email || 'correo@ejemplo.com') + '"><div class="actions"><button class="btn" id="aok">Dar acceso</button></div>', (sh, close) => {
+        const send = async e => { if (!e) return toast('Elige una persona o escribe un correo.', true); let r; if (await command(async () => { r = await api('invitar', { cliente: c.id, email: e }); await loadCrm(true); }, '')) { close(); toast('Listo: ' + r.email + ' ya ve su pestaña Colaborador'); render(); } };
+        $$('[data-em]', sh).forEach(bt => bt.onclick = () => send(bt.dataset.em));
+        $('#aok', sh).onclick = () => send($('#aem', sh).value.trim() || x.acceso || '');
+      });
+    };
   })();
 }
 
