@@ -391,9 +391,12 @@ async function viewArea(tab, cached) {
   if (me.cuenta.tipo === 'empresa' || me.cuenta.tipo === 'colaborador') return viewBiz(me, tab);
   const chip = e => '<span class="st ' + (e === 'Hecha' || e === 'Programada' || e === 'Entregado' || e === 'Listo' ? 'ok' : /Rechaz|Cancel/.test(e) ? 'bad' : '') + '">' + esc(e) + '</span>';
   const fd = d => d ? new Date(d.length === 10 ? d + 'T12:00:00Z' : d).toLocaleDateString('es-ES') : '';
-  const TABS = [['inicio', 'Inicio'], ['docs', 'Documentos'], ['monedero', 'Monedero'], ['cuenta', 'Cuenta']];
+  const TABS = [['inicio', 'Inicio'], ['docs', 'Documentos'], ['monedero', 'Monedero']].concat(me.cuenta.colab ? [['colab', 'Colaborador']] : []).concat([['cuenta', 'Cuenta']]);
+  if (tab === 'colab' && !me.cuenta.colab) tab = 'inicio';
   let h = '';
-  if (tab === 'inicio') {
+  if (tab === 'colab') {
+    h = '<div id="bizb"><div class="spin"></div></div>';
+  } else if (tab === 'inicio') {
     const act = me.servicios.filter(x => !x.cerrado);
     h = '<a class="btn" href="#nuevo">Pedir presupuesto</a>' +
       (me.cuenta.bienvenida ? '<p class="note">Tienes un <b>−10 %</b> en tu primer servicio (desde 150 €).</p>' : '') +
@@ -452,6 +455,7 @@ async function viewArea(tab, cached) {
   }
   APP.innerHTML = top('Hola, ' + me.cuenta.nombre.split(' ')[0], S.preview ? 'Vista de dirección · solo lectura' : 'Mi área', null) + '<div class="pad">' + (S.preview ? '<p class="note warn">👁️ Estás viendo el área tal como la ve este cliente. No se puede cambiar nada.</p>' : '') + '<div class="seg">' + TABS.map(t => '<button data-tab="' + t[0] + '" class="' + (t[0] === tab ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div>' + h + '</div>';
   $$('[data-tab]').forEach(b => b.onclick = () => viewArea(b.dataset.tab));
+  if (tab === 'colab') colabPanel($('#bizb'));
   $$('[data-file]').forEach(el => el.onclick = async () => { toast('Preparando el PDF…'); try { const x = await api('cFile', { kind: el.dataset.file, id: el.dataset.id }); const a = document.createElement('a'); a.href = x.data; a.download = x.name; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { toast(e.message, true); } });
   const redraw = () => { const y = window.scrollY; viewArea('monedero', true).then(() => window.scrollTo(0, y)); };
   if ($('#bv')) $('#bv').onchange = e => { BQ.v = Number(e.target.value); redraw(); };
@@ -497,17 +501,19 @@ async function viewBiz(me, tab) {
   if ($('#dsv')) $('#dsv').onclick = async () => { try { const r = await api('cSave', Object.assign({ nombre: $('#dn').value.trim(), email: $('#de').value.trim() }, $('#dt').value.trim() ? { telefono: $('#dt').value.trim() } : {})); S.cuenta = r.cuenta; LS.set('cuenta', r.cuenta); toast('Datos guardados'); S.me = null; viewArea('cuenta'); } catch (x) { toast(x.message, true); } };
   if ($('#pwb')) $('#pwb').onclick = async () => { try { await api('cSave', { actual: $('#pa').value, password: $('#pn').value }); toast('Contraseña cambiada'); } catch (x) { toast(x.message, true); } };
   if ($('#out')) $('#out').onclick = () => { S.me = null; logout(); };
-  if (tab !== 'colab') return;
-  let x; try { x = await api('cColab', {}); } catch (e) { $('#bizb').innerHTML = '<div class="card"><p class="small" style="color:var(--bad)">' + esc(e.message) + '</p></div>'; return; }
+  if (tab === 'colab') colabPanel($('#bizb'));
+}
+async function colabPanel(box) {
+  let x; try { x = await api('cColab', {}); } catch (e) { box.innerHTML = '<div class="card"><p class="small" style="color:var(--bad)">' + esc(e.message) + '</p></div>'; return; }
   const qr = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=10&data=' + encodeURIComponent(x.enlace);
   const bar = (v, t) => '<div class="wbar" style="background:#e9eef5"><i style="width:' + Math.min(100, Math.round(100 * v / t)) + '%"></i></div>';
-  $('#bizb').innerHTML =
+  box.innerHTML =
     '<div class="card"><b style="color:var(--navy)">Tu enlace</b><p class="small muted" style="margin:2px 0 8px">Compártelo o enseña el QR. Quien pida presupuesto desde aquí queda asociado a ti.</p><div style="display:flex;gap:12px;align-items:center"><img src="' + qr + '" alt="QR" style="width:110px;height:110px;border-radius:10px;border:1px solid #e3e8ef"><div style="flex:1;min-width:0"><div class="small" style="word-break:break-all">' + esc(x.enlace) + '</div><button class="btn sm" id="ccp" style="margin-top:8px">Copiar enlace</button> <a class="btn sm ghost" href="' + qr + '" target="_blank" rel="noopener" style="margin-top:8px">Descargar QR</a></div></div><p class="small muted" style="margin-top:8px">Tu código: <b>' + esc(x.codigo) + '</b></p></div>' +
     '<div class="card"><b style="color:var(--navy)">Tus comisiones · ' + esc(x.pct) + ' %</b><div class="lines" style="margin-top:6px"><div><span>Este mes</span><b>' + eur(x.mes) + '</b></div><div><span>Este año</span><b>' + eur(x.ano) + '</b></div><div class="d"><span>Pendiente de liquidar</span><b>' + eur(x.pendiente) + '</b></div><div style="border:0"><span>Ya pagado</span><b>' + eur(x.pagado) + '</b></div></div><p class="small muted" style="margin-top:6px">Ganas el ' + esc(x.pct) + ' % de lo que factura cada cliente que traes (sin IVA), durante sus primeros 12 meses. Cada mes te enviamos la liquidación y tú nos envías tu factura por ese importe.</p></div>' +
     (x.objetivos.length ? '<div class="card"><b style="color:var(--navy)">Tus objetivos</b>' + x.objetivos.map(o => '<div style="margin-top:10px"><b class="small">' + esc(o.titulo || 'Objetivo') + '</b>' + (o.premio ? '<span class="small muted"> · ' + esc(o.premio) + '</span>' : '') + (o.hasta ? '<div class="small muted">Hasta el ' + fday(o.hasta) + '</div>' : '') + (o.clientes ? '<div class="small" style="margin-top:4px">Clientes: ' + o.llevaClientes + ' de ' + o.clientes + '</div>' + bar(o.llevaClientes, o.clientes) : '') + (o.facturacion ? '<div class="small" style="margin-top:4px">Facturación: ' + eur(o.llevaFacturacion) + ' de ' + eur(Number(o.facturacion)) + '</div>' + bar(o.llevaFacturacion, Number(o.facturacion)) : '') + '</div>').join('') + '</div>' : '') +
     '<div class="card"><b style="color:var(--navy)">Clientes que has traído</b>' + (x.clientes.length ? x.clientes.map(c => '<div class="li"><div class="g"><b>' + esc(c.nombre) + '</b><span>Desde el ' + fday(c.desde) + ' · ' + c.servicios + ' servicios</span></div></div>').join('') : '<p class="small muted" style="margin-top:4px">Aún ninguno. ¡Comparte tu enlace!</p>') + '</div>' +
     (x.comisiones.length ? '<div class="card"><b style="color:var(--navy)">Movimientos</b>' + x.comisiones.slice(0, 40).map(k => '<div class="li"><div class="g"><b>' + eur(k.importe) + '</b><span>' + fday(k.fecha) + ' · ' + esc(k.cliente) + ' · ' + esc(k.pct) + ' % de ' + eur(k.base) + '</span></div><span class="st ' + (k.estado === 'Liquidada' ? 'ok' : '') + '">' + esc(k.estado) + '</span></div>').join('') + '</div>' : '');
-  $('#ccp').onclick = () => (navigator.clipboard ? navigator.clipboard.writeText(x.enlace) : Promise.reject()).then(() => toast('Enlace copiado'), () => toast(x.enlace));
+  $('#ccp', box).onclick = () => (navigator.clipboard ? navigator.clipboard.writeText(x.enlace) : Promise.reject()).then(() => toast('Enlace copiado'), () => toast(x.enlace));
 }
 function viewError(m) { APP.innerHTML = top('Efecto Mariposa', '', '') + '<div class="pad"><div class="card center"><p style="color:var(--bad)">' + esc(m) + '</p><a class="btn ghost" style="margin-top:12px" href="#">Ir al inicio</a></div></div>'; }
 

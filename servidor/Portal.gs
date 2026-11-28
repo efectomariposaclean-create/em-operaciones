@@ -1334,8 +1334,7 @@ function inviteAccount_(o) {
     insert_('Cuentas', a);
   } else {
     if (o.tipo === 'empresa') { a.tipo = 'empresa'; a.usuario = o.usuario || a.usuario; a.cliente = o.cliente || a.cliente; a.rol = o.permiso || a.rol; }
-    if (o.colab) { a.colab = o.colab; if (a.tipo === 'particular' && !a.cliente) a.tipo = 'colaborador'; }
-    if (o.tipo === 'colaborador' && a.tipo !== 'empresa') a.tipo = a.cliente ? a.tipo : 'colaborador';
+    if (o.colab) a.colab = o.colab;   // si ya era particular o empresa, sigue siéndolo y además ve su pestaña de colaborador
     a.activo = true;
     update_('Cuentas', a);
   }
