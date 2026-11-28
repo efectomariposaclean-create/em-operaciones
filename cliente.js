@@ -357,6 +357,7 @@ async function viewBonoUsar(id) {
       keep();
       if (st.k == null) return toast('Elige qué servicio quieres.', true);
       const b = $('#bugo'); busy(b, true);
+      if (S.preview) { busy(b, false); return toast('Vista de dirección: aquí el cliente pediría la visita.', true); }
       try { const r = await api('cBonoUsar', { id: m.id, k: st.k, w: st.w, matricula: st.mat, dia: st.dia, notas: st.notas }); S.me = null; toast('¡Visita pedida! Te confirmamos el día.'); go('s=' + r.t); }
       catch (e) { busy(b, false); toast(e.message, true); }
     };
@@ -412,11 +413,11 @@ async function viewArea(tab, cached) {
       const pend = m.estado === 'Pendiente de pago', off = m.estado === 'Gastado' || m.estado === 'Caducado' || m.estado === 'Anulado';
       const pctPag = m.total ? Math.min(100, Math.round(m.pagado / m.total * 100)) : 0;
       const usable = m.estado === 'Activo' && (m.lineas || []).some(l => l.quedan > 0);
-      return '<div class="wcard bono' + (off ? ' off' : '') + '"' + (usable && !S.preview ? ' data-bono="' + esc(m.id) + '" style="cursor:pointer"' : '') + '><div class="wtop"><span>BONO ' + esc(m.ref || '') + '</span><span class="wst">' + esc(m.estado) + '</span></div>' +
+      return '<div class="wcard bono' + (off ? ' off' : '') + '"' + (usable ? ' data-bono="' + esc(m.id) + '" style="cursor:pointer"' : '') + '><div class="wtop"><span>BONO ' + esc(m.ref || '') + '</span><span class="wst">' + esc(m.estado) + '</span></div>' +
         '<div class="wname">' + esc(m.nombre) + ' · ' + m.visitas + ' visitas</div><div class="wsub">' + esc([m.comp && m.comp.vehiculo, m.matricula].filter(Boolean).join(' · ')) + (m.caduca ? ' · hasta el ' + fd(m.caduca) : '') + '</div>' +
         '<div class="wvis">' + Array.from({ length: m.visitas }, (_, i) => '<span class="' + (i < m.usadas ? 'on' : '') + '">' + (i < m.usadas ? '✓' : i + 1) + '</span>').join('') + '</div>' +
         ((m.lineas || []).length ? '<div class="wsub">' + m.lineas.map(l => l.srv + ': quedan ' + l.quedan + ' de ' + l.n + (l.enCurso ? ' (' + l.enCurso + ' pedida' + (l.enCurso > 1 ? 's' : '') + ')' : '')).join('<br>') + '</div>' : (m.comp ? '<div class="wsub">' + m.comp.comp.map(c => c.n + ' × ' + c.srv.toLowerCase()).join(' + ') + '</div>' : '')) +
-        (usable && !S.preview ? '<div class="wuse">Usar el bono ›</div>' : '') +
+        (usable ? '<div class="wuse">Usar el bono ›</div>' : pend ? '<div class="wuse" style="opacity:.6">Podrás usarlo en cuanto se active</div>' : '') +
         (m.total ? '<div class="wbar"><i style="width:' + pctPag + '%"></i></div><div class="wsub">Pagado ' + eur(m.pagado) + ' de ' + eur(m.total) + (!pend && m.pagado < m.total ? ' · ' + eur(m.porVisita) + ' en cada visita' : '') + '</div>' : '') +
         (pend && pi ? '<div class="wpay"><b>Para activarlo, paga ' + eur(m.total / 2) + '</b><br>Bizum: <b>' + esc(pi.bizum) + '</b>' + (pi.iban ? '<br>Transferencia: <b>' + esc(pi.iban) + '</b><br>' + esc(pi.titular) : '') + '<br>Concepto: <b>' + esc(m.ref) + '</b><button class="btn sm" data-paid="' + esc(m.id) + '" style="margin-top:8px;width:100%">Ya lo he pagado</button></div>' : '') + '</div>';
     };
