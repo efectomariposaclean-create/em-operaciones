@@ -11,6 +11,23 @@ const LS = { get: (k, d) => { try { const v = localStorage.getItem('emc:' + k); 
 const device = LS.get('device') || (() => { const d = 'c' + Math.random().toString(36).slice(2) + Date.now().toString(36); LS.set('device', d); return d; })();
 const S = { token: LS.get('token', ''), cuenta: LS.get('cuenta', null), q: LS.get('q', null), me: null };
 const LOGO = 'icons/logo-header.png';
+/* Procedencia: ?origen=QR-K2 en el enlace (se recuerda 30 días); si no, se deduce de la página de la que viene. */
+const ORIGEN = (() => {
+  let o = null;
+  try { o = new URLSearchParams(location.search).get('origen'); } catch (e) {}
+  o = o && String(o).toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 40);
+  const prev = LS.get('origen', null), now = Date.now();
+  if (o) { LS.set('origen', { v: o, t: now }); return o; }
+  if (prev && now - prev.t < 30 * 864e5) return prev.v;
+  const r = document.referrer || '';
+  const v = /google\./.test(r) ? 'GOOGLE' : /instagram\./.test(r) ? 'INSTAGRAM' : /tiktok\./.test(r) ? 'TIKTOK' : /facebook\.|fb\./.test(r) ? 'FACEBOOK' : /efectomariposaclean/.test(r) ? 'WEB' : 'APP';
+  LS.set('origen', { v: v, t: now });
+  return v;
+})();
+const CONOCIO = ['Google', 'Instagram', 'TikTok', 'Facebook', 'Recomendación', 'Caravaning K2', 'Colaborador', 'Folleto o QR', 'Ya soy cliente', 'Otros'];
+const conocioSel = () => '<label class="f">¿Cómo nos has conocido?<select class="in" id="conocio"><option value="">Elige una opción</option>' + CONOCIO.map(x => '<option>' + x + '</option>').join('') + '</select></label><label class="f" id="colabw" hidden>Nombre o código del colaborador<input class="in" id="colab"></label>';
+const conocioBind = () => { const s = $('#conocio'); if (s) s.onchange = () => { $('#colabw').hidden = !/Colaborador|Recomendación/.test(s.value); }; };
+const procedencia = () => ({ origen: ORIGEN, conocio: ($('#conocio') || {}).value || '', colaborador: (($('#colab') || {}).value || '').trim() });
 
 async function api(action, data) {
   if (!CFG.API_URL) throw Error('La app aún no está conectada.');
@@ -162,16 +179,18 @@ function viewData() {
     '<label class="f">Municipio<input class="in" id="muni" value="' + esc(d.municipio || '') + '" placeholder="San Martín de la Vega"></label>' +
     '<label class="f">Marca y modelo (opcional)<input class="in" id="modelo" placeholder="Adria Coral 670"></label>' +
     '<label class="f">¿Tienes un vale regalo? (opcional)<div style="display:flex;gap:8px;margin-top:5px"><input class="in" id="vale" placeholder="VR2026001" style="margin:0;text-transform:uppercase" value="' + esc(LS.get('vale', '')) + '"><button type="button" class="btn sm ghost" id="valeb">Comprobar</button></div></label><div id="valei" class="small" style="color:var(--green)"></div>' +
+    (S.token ? '' : conocioSel()) +
     '<label class="f">¿Algo que debamos saber?<textarea class="in" id="notas" placeholder="Manchas, olor a humedad, pelo de perro…"></textarea></label>' +
     '<label class="ck"><input type="checkbox" id="priv"> <span>He leído y acepto la política de privacidad. Usamos tus datos solo para gestionar tu presupuesto y tus servicios.</span></label>' +
     (S.token ? '' : '<label class="ck"><input type="checkbox" id="ofer"> <span>Quiero recibir ofertas exclusivas para clientes por correo.</span></label>') +
     '</div>' +
     '<div class="card"><details><summary>Cómo dejarlo preparado el día del servicio</summary><ul class="prep">' + (q.tipo === 'coche' ? ['Maletero y guantera vacíos', 'Sillitas de niño retiradas', 'Objetos de valor fuera', 'Llaves disponibles a la hora acordada'] : ['Depósitos de aguas grises y negras vaciados', 'Ropa, comida y objetos personales fuera', 'Nevera vacía y desconectada', '1,5 m libres alrededor y toldo recogido']).map(x => '<li>' + esc(x) + '</li>').join('') + '</ul><p class="note" style="margin-top:6px">¿Sin agua ni luz? No pasa nada: llevamos generador y depósito propios. Según el servicio puede llevar un pequeño suplemento; te lo confirmamos antes.</p></details></div>' +
     '</div><div class="bar"><div class="in2"><button class="btn" id="send">Enviar y añadir fotos</button></div></div>';
+  conocioBind();
   $('#valeb').onclick = async () => { const c = $('#vale').value.trim(); if (!c) return; try { const r = await api('pVale', { codigo: c, email: $('#email').value.trim(), device: device }); $('#valei').style.color = 'var(--green)'; $('#valei').textContent = '✓ Vale ' + r.codigo + ' · saldo ' + eur(r.saldo) + ' · válido hasta el ' + fday(r.caduca) + '. Se descuenta del total.'; } catch (e) { $('#valei').style.color = 'var(--bad)'; $('#valei').textContent = e.message; } };
   $('#send').onclick = async () => {
     const v = id => $('#' + id) ? $('#' + id).value.trim() : '';
-    const body = { nombre: v('nombre'), telefono: v('tel'), email: v('email'), municipio: v('muni'), modelo: v('modelo'), notas: v('notas'), privacidad: $('#priv').checked, ofertas: !!($('#ofer') && $('#ofer').checked), sel: selOf(q), device: device, vale: v('vale').toUpperCase() };
+    const body = { nombre: v('nombre'), telefono: v('tel'), email: v('email'), municipio: v('muni'), modelo: v('modelo'), notas: v('notas'), privacidad: $('#priv').checked, ofertas: !!($('#ofer') && $('#ofer').checked), sel: selOf(q), device: device, vale: v('vale').toUpperCase(), ...procedencia() };
     LS.set('vale', '');
     if (!body.privacidad) return toast('Marca la casilla de privacidad para continuar.', true);
     LS.set('datos', { nombre: body.nombre, telefono: body.telefono, email: body.email, municipio: body.municipio });
@@ -247,7 +266,7 @@ async function viewSol(t) {
   APP.innerHTML = top('Mi solicitud ' + s.numero, 'Hola, ' + s.nombre.split(' ')[0], S.token ? 'area' : '') + '<div class="pad">' + h + '</div>';
   const ch = $('#chat'); if (ch) ch.scrollTop = ch.scrollHeight;
   $$('[data-ph]').forEach(async el => { try { const r = await api('pPhotoGet', { t: t, id: el.dataset.ph }); if (r.data) { const i = document.createElement('img'); i.src = r.data; el.appendChild(i); } } catch (e) {} });
-  if ($('#reg')) $('#reg').onclick = async () => { const b = $('#reg'); busy(b, true); try { setSession(await api('pRegister', { t: t, password: $('#pw').value, ofertas: $('#of').checked, device: device })); toast('¡Cuenta creada! Descuento aplicado.'); viewSol(t); } catch (e) { busy(b, false); toast(e.message, true); } };
+  if ($('#reg')) $('#reg').onclick = async () => { const b = $('#reg'); busy(b, true); try { setSession(await api('pRegister', { t: t, password: $('#pw').value, ofertas: $('#of').checked, device: device, origen: ORIGEN })); toast('¡Cuenta creada! Descuento aplicado.'); viewSol(t); } catch (e) { busy(b, false); toast(e.message, true); } };
   if ($('#acc')) $('#acc').onclick = async () => { const dia = $('#dia').value; if (!dia) return toast('Elige un día.', true); const b = $('#acc'); busy(b, true); try { await api('pAccept', { t: t, dia: dia, franja: $('#fr').value }); toast('¡Aceptado! Te confirmamos el día.'); viewSol(t); } catch (e) { busy(b, false); toast(e.message, true); } };
   if ($('#snd')) { const send = async () => { const v = $('#txt').value.trim(); if (!v) return; const b = $('#snd'); busy(b, true, '…'); try { await api('pMsg', { t: t, texto: v }); viewSol(t); } catch (e) { busy(b, false); toast(e.message, true); } }; $('#snd').onclick = send; $('#txt').onkeydown = e => { if (e.key === 'Enter') send(); }; }
 }
@@ -260,7 +279,7 @@ function viewInfo(tipo) {
   $('#go').onclick = async () => {
     if (!$('#p').checked) return toast('Marca la casilla de privacidad.', true);
     const b = $('#go'); busy(b, true);
-    try { const r = await api('pRequest', { nombre: $('#n').value, telefono: $('#t').value, email: $('#e').value, privacidad: true, device: device, notas: $('#x').value, info: tipo }); go('s=' + r.t); }
+    try { const r = await api('pRequest', { nombre: $('#n').value, telefono: $('#t').value, email: $('#e').value, privacidad: true, device: device, notas: $('#x').value, info: tipo, origen: ORIGEN }); go('s=' + r.t); }
     catch (e) { busy(b, false); toast(e.message, true); }
   };
 }
@@ -269,20 +288,21 @@ function viewInfo(tipo) {
 function viewLogin(mode) {
   const reg = mode === 'registro', fg = mode === 'olvido';
   APP.innerHTML = '<div class="hero" style="padding-bottom:48px"><div class="lg"><img src="' + LOGO + '" alt="Efecto Mariposa"></div><h1>' + (reg ? 'Crea tu cuenta' : fg ? 'Entrar sin contraseña' : 'Entra en tu área') + '</h1></div><div class="pad lift"><div class="card" style="display:flex;flex-direction:column;gap:10px">' +
-    (reg ? '<label class="f">Nombre y apellidos<input class="in" id="nombre" autocomplete="name"></label><label class="f">Teléfono<input class="in" id="tel" type="tel"></label>' : '') +
+    (reg ? '<label class="f">Nombre y apellidos<input class="in" id="nombre" autocomplete="name"></label><label class="f">Teléfono<input class="in" id="tel" type="tel"></label>' + conocioSel() : '') +
     '<label class="f">Correo<input class="in" id="email" type="email" autocomplete="email"></label>' +
     (fg ? '' : '<label class="f">Contraseña<input class="in" id="pw" type="password" autocomplete="' + (reg ? 'new-password' : 'current-password') + '"></label>') +
     (reg ? '<label class="ck"><input type="checkbox" id="priv"> <span>Acepto la política de privacidad.</span></label><label class="ck"><input type="checkbox" id="ofer"> <span>Quiero recibir ofertas exclusivas por correo.</span></label><p class="note"><b>−10 % en tu primer servicio</b> desde 150 €.</p>' : '') +
     '<button class="btn" id="go">' + (reg ? 'Crear mi cuenta' : fg ? 'Enviarme el enlace' : 'Entrar') + '</button>' +
     (reg || fg ? '<a class="small center" href="#entrar">Ya tengo cuenta</a>' : '<a class="small center" href="#olvido">He olvidado la contraseña</a><a class="small center" href="#registro">Crear cuenta</a>') +
     '</div><a class="small center" href="#">‹ Volver</a></div>';
+  conocioBind();
   $('#go').onclick = async () => {
     const b = $('#go'), v = id => ($('#' + id) || {}).value || '';
     busy(b, true);
     try {
       if (fg) { await api('pForgot', { email: v('email') }); busy(b, false); toast('Si el correo tiene cuenta, te llega un enlace en un minuto.'); return; }
       if (reg && !$('#priv').checked) { busy(b, false); return toast('Acepta la política de privacidad.', true); }
-      setSession(await api(reg ? 'pRegister' : 'pLogin', { email: v('email'), password: v('pw'), nombre: v('nombre'), telefono: v('tel'), ofertas: reg && $('#ofer').checked, device: device }));
+      setSession(await api(reg ? 'pRegister' : 'pLogin', { email: v('email'), password: v('pw'), nombre: v('nombre'), telefono: v('tel'), ofertas: reg && $('#ofer').checked, device: device, ...(reg ? procedencia() : {}) }));
       go('area');
     } catch (e) { busy(b, false); toast(e.message, true); }
   };
