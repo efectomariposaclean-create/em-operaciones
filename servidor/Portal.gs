@@ -38,7 +38,8 @@ function origen_(d) {
   const pagina = clean_(d.pagina, 60);
   const etiqueta = canal !== 'DIRECTO' && canal !== 'WEB' && canal !== 'APP' ? canal : (conocio || (canal === 'WEB' ? 'Web' : canal === 'APP' ? 'App' : 'Directo'));
   const texto = ['Canal: ' + canal, conocio && 'Nos conoció por: ' + conocio, colab && 'Colaborador: ' + colab, pagina && 'Página: ' + pagina].filter(Boolean).join(' · ');
-  return { canal: canal, conocio: conocio, colab: colab, etiqueta: etiqueta, texto: texto };
+  const cf = colab && typeof colabFind_ === 'function' ? colabFind_(colab) : null;
+  return { canal: canal, conocio: conocio, colab: colab, colabId: cf ? cf.id : '', etiqueta: etiqueta, texto: texto + (cf ? ' (' + cf.nombre + ')' : '') };
 }
 
 function clientUrl_() { return APP.clienteUrl || (APP.appUrl + 'cliente.html'); }
@@ -154,7 +155,7 @@ function clientPreview_(d, u) {
   return { url: clientUrl_() + '#ver=v.' + body + '.' + sign_('v:' + body) };
 }
 function sessionOut_(a) { return { token: ctoken_(a, 's', APP.sesionDias * 864e5), cuenta: accOut_(a) }; }
-function accOut_(a) { return { nombre: a.nombre, email: a.email, telefono: a.telefono, ofertas: !!a.ofertas, bienvenida: !a.bienvenida && !a.cliente }; }
+function accOut_(a) { return { tipo: a.tipo || 'particular', colab: !!a.colab, nombre: a.nombre, email: a.email, telefono: a.telefono, ofertas: !!a.ofertas, bienvenida: !a.bienvenida && !a.cliente }; }
 function mailOk_(e) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e); }
 function throttle_(key, max) {
   const c = CacheService.getScriptCache(), k = 'pt:' + key, n = Number(c.get(k) || 0);
@@ -191,7 +192,7 @@ function pRegister_(d) {
       const nota = note_(null, 'Ha creado su cuenta en el área de clientes.' + (d.ofertas ? ' Acepta recibir ofertas.' : '') + '\n' + o.texto, 'Nota');
       if (c) { c.notas = (c.notas || []).concat([nota]); c.actualizado = iso_(); update_('Contactos', c); }
       else {
-        c = { id: 'p-' + uid_().slice(0, 8), nombre: nombre, tipo: 'Particular', contacto: '', telefono: tel, email: mail, vehiculo: '', ubicacion: '', fase: 'Nuevo', prioridad: 'B', proxAccion: 'Bienvenida: ofrecer presupuesto', proxFecha: shift_(day_(), 1), origen: o.etiqueta, importe: '', notas: [nota], revisar: false, cliente: '', evento: '', carpeta: '', creado: iso_(), actualizado: iso_(), ref: 'cuenta' };
+        c = { id: 'p-' + uid_().slice(0, 8), nombre: nombre, tipo: 'Particular', contacto: '', telefono: tel, email: mail, vehiculo: '', ubicacion: '', fase: 'Nuevo', prioridad: 'B', proxAccion: 'Bienvenida: ofrecer presupuesto', proxFecha: shift_(day_(), 1), origen: o.etiqueta, colaborador: o.colabId, importe: '', notas: [nota], revisar: false, cliente: '', evento: '', carpeta: '', creado: iso_(), actualizado: iso_(), ref: 'cuenta' };
         insert_('Contactos', c);
       }
       contacto = c.id;
@@ -214,6 +215,7 @@ function pLogin_(d) {
   throttle_('log:' + clean_(d.device, 64), 8);
   throttle_('logm:' + email, 8);
   const a = read_('Cuentas').find(x => x.email === email && x.activo !== false);
+  if (a && !a.hash) fail_('Aún no has creado tu contraseña: usa el enlace de tu correo de invitación o pulsa «He olvidado la contraseña».');
   if (!a || pwHash_(String(d.password || ''), a.sal) !== a.hash) fail_('Correo o contraseña incorrectos.');
   return sessionOut_(a);
 }
@@ -221,7 +223,7 @@ function pForgot_(d) {
   const email = clean_(d.email, 120).toLowerCase();
   throttle_('fgt:' + email, 3);
   const a = read_('Cuentas').find(x => x.email === email && x.activo !== false);
-  if (a) pmail_(a.email, 'Tu enlace para entrar · Efecto Mariposa', 'Entra en tu área de cliente', ['Hola, ' + esc_(a.nombre) + ':', 'Pulsa el botón para entrar sin contraseña. Desde dentro puedes poner una nueva.', 'El enlace caduca en 2 horas.'], 'Entrar en mi área', clientUrl_() + '#m=' + ctoken_(a, 'm', 2 * 3600e3), 'Acceso');
+  if (a) pmail_(a.email, 'Tu enlace para entrar · Efecto Mariposa', 'Entra en tu área de cliente', ['Hola, ' + esc_(a.nombre) + ':', 'Pulsa el botón para entrar sin contraseña. Desde dentro puedes poner una nueva.', 'El enlace caduca en 2 horas.'], 'Entrar en mi área', clientUrl_() + (a.tipo === 'particular' && a.hash ? '#m=' : '#inv=') + ctoken_(a, 'm', 2 * 3600e3), 'Acceso');
   return { ok: true };
 }
 function pMagic_(d) {
@@ -253,7 +255,7 @@ function cSave_(d, u, req) {
     }
     // si es cliente, sus datos de contacto se actualizan también en su ficha
     const cambios = ['telefono', 'email', 'nombre'].filter(k => antes[k] !== a[k]);
-    if (cambios.length) {
+    if (cambios.length && a.tipo !== 'empresa') {
       if (!a.cliente) accClient_(a);
       const c = a.cliente ? read_('Clientes').find(x => x.id === a.cliente) : null;
       if (c) {
@@ -337,7 +339,7 @@ function pRequest_(d) {
         c.evento = calFollow_(c.evento, c.proxFecha, c.proxAccion, c.nombre, c.telefono);
         update_('Contactos', c);
       } else {
-        c = { id: 'p-' + uid_().slice(0, 8), nombre: empresa || nombre, tipo: empresa ? 'Empresa' : 'Particular', contacto: empresa ? nombre : '', telefono: tel, email: email, vehiculo: veh, ubicacion: clean_(d.municipio, 80), fase: 'Nuevo', prioridad: 'A', proxAccion: 'Revisar solicitud ' + numero, proxFecha: day_(), origen: o.etiqueta, importe: r2_(bruto_(p.lineas) / 1.21), notas: [nota], revisar: false, cliente: '', evento: '', carpeta: '', creado: iso_(), actualizado: iso_(), ref: 'app:' + numero };
+        c = { id: 'p-' + uid_().slice(0, 8), nombre: empresa || nombre, tipo: empresa ? 'Empresa' : 'Particular', contacto: empresa ? nombre : '', telefono: tel, email: email, vehiculo: veh, ubicacion: clean_(d.municipio, 80), fase: 'Nuevo', prioridad: 'A', proxAccion: 'Revisar solicitud ' + numero, proxFecha: day_(), origen: o.etiqueta, colaborador: o.colabId, importe: r2_(bruto_(p.lineas) / 1.21), notas: [nota], revisar: false, cliente: '', evento: '', carpeta: '', creado: iso_(), actualizado: iso_(), ref: 'app:' + numero };
         c.evento = calFollow_('', c.proxFecha, c.proxAccion, c.nombre, c.telefono);
         insert_('Contactos', c);
       }
@@ -558,7 +560,7 @@ function clientFromContact_(c, u) {
   let cl = clients.find(x => (c.telefono && norm_(x.telefono) === norm_(c.telefono)) || (c.email && emailsOf_(x).indexOf(String(c.email).toLowerCase()) >= 0));
   if (!cl) {
     const empresa = c.tipo && c.tipo !== 'Particular';
-    cl = { id: 'c-' + uid_().slice(0, 8), nombre: c.nombre, tipo: empresa ? 'empresa' : 'particular', protocolo: 'general', tipos: TIPOS_GENERAL, contacto: c.contacto || c.nombre, telefono: c.telefono || '', email: c.email || '', revisor: '', carpeta: '', activo: true, creado: iso_(), avisos: true, nif: '', direccion: '', ritmo: '', ultimo: '', crm: { notas: (c.notas || []).concat([note_(u, 'Ficha creada desde el prospecto para su primer servicio.', 'Nota')]) }, tarifa: {} };
+    cl = { colaborador: c.colaborador || '', colabDesde: c.colaborador ? day_() : '', id: 'c-' + uid_().slice(0, 8), nombre: c.nombre, tipo: empresa ? 'empresa' : 'particular', protocolo: 'general', tipos: TIPOS_GENERAL, contacto: c.contacto || c.nombre, telefono: c.telefono || '', email: c.email || '', revisor: '', carpeta: '', activo: true, creado: iso_(), avisos: true, nif: '', direccion: '', ritmo: '', ultimo: '', crm: { notas: (c.notas || []).concat([note_(u, 'Ficha creada desde el prospecto para su primer servicio.', 'Nota')]) }, tarifa: {} };
     insert_('Clientes', cl);
   }
   c.cliente = cl.id; c.actualizado = iso_();
@@ -713,6 +715,10 @@ function ofertasActivas_() {
 // cMe_ completo: sustituye al de la fase 1
 function cMe_(d, u, req) {
   const a = csession_(req);
+  if (a.tipo === 'empresa' || a.tipo === 'colaborador') {
+    const c = a.cliente ? clientById_(read_('Clientes'), a.cliente) : null;
+    return { cuenta: accOut_(a), empresa: c ? c.nombre : '', portal: a.tipo === 'empresa' && !!a.usuario, solicitudes: [], servicios: [], facturas: [], monedero: [], vehiculos: [], ofertas: [] };
+  }
   const cid = accClient_(a);
   const sols = read_('Solicitudes').filter(s => s.cuenta === a.id || s.email === a.email).sort((x, y) => String(y.fecha).localeCompare(String(x.fecha)));
   const servs = cid ? read_('Servicios').filter(s => s.cliente === cid && !s.archivado).sort((x, y) => String(y.creado).localeCompare(String(x.creado))).slice(0, 60) : [];
@@ -1039,7 +1045,20 @@ Object.assign(PORTAL_OPEN, { cBonoPedir: 1, cBonoAviso: 1, cVehSave: 1 });
 Object.assign(PORTAL_ACTIONS, { cVehSave: cVehSave_, vehSave: vehSave_, vehList: vehList_, atender: atender_ });
 Object.assign(PORTAL_ACTIONS, { cBonoPedir: cBonoPedir_, cBonoAviso: cBonoAviso_, walletPago: walletPago_ });
 
+const BONO_COMPO_COCHE = {
+  estandar:  { Escapadas: [[1, 2]], Temporadas: [[1, 4]], 'Siempre a punto': [[1, 2], [0, 4]] },
+  intensiva: { Escapadas: [[3, 2]], Temporadas: [[3, 2], [1, 2]], 'Siempre a punto': [[3, 2], [0, 4]] }
+};
 function bonoCalc_(d) {
+  if (d.tipo === 'coche') {
+    const car = P_CARS[Number(d.cv)], base = d.base === 'intensiva' ? 'intensiva' : 'estandar', comp = BONO_COMPO_COCHE[base][d.bono];
+    if (!car || !comp) fail_('Selección no válida.');
+    let bruto = 0;
+    const lineas = comp.map(c => { const unit = car[1][c[0]]; bruto += unit * c[1]; return { n: c[1], srv: P_CSRV[c[0]], unit: unit }; });
+    bruto = r2_(bruto);
+    const pct = BONO_DTO[d.bono], total = r2_(bruto * (1 - pct / 100));
+    return { tipo: 'coche', vehiculo: car[0], antiguedad: 0, base: base, bono: d.bono, visitas: comp.reduce((t, c) => t + c[1], 0), comp: lineas, bruto: bruto, pct: pct, total: total, primero: r2_(total / 2) };
+  }
   const r = P_RATES[Number(d.v)], a = Number(d.a) || 0, base = d.base === 'intensiva' ? 'intensiva' : 'estandar', comp = BONO_COMPO[base][d.bono];
   if (!r || !comp || [0, 10, 25].indexOf(a) < 0) fail_('Selección no válida.');
   let bruto = 0;
@@ -1064,8 +1083,9 @@ function cBonoPedir_(d, u, req) {
   noPreview_(a);
   throttle_('bono:' + a.id, 6);
   if (!d.acepto) fail_('Acepta las condiciones del bono para continuar.');
-  const calc = bonoCalc_(d), mat = clean_(d.matricula, 20).toUpperCase();
-  if (!mat) fail_('Escribe la matrícula: el bono va unido a ese vehículo.');
+  const calc = bonoCalc_(d), mat1 = clean_(d.matricula, 20).toUpperCase(), mat2 = calc.tipo === 'coche' ? clean_(d.matricula2, 20).toUpperCase() : '';
+  if (!mat1) fail_('Escribe la matrícula: el bono va unido a ese vehículo.');
+  const mat = mat2 && mat2 !== mat1 ? mat1 + ' / ' + mat2 : mat1;
   const cid = accClient_(a);
   return locked_(() => {
     const all = read_('Monedero'), y = new Date().getFullYear();
@@ -1209,4 +1229,235 @@ function tareasPortal() {
   });
   flushMail_();
   return objetivo.length;
+}
+
+/* ================================================================== */
+/* Una sola puerta: empresas y colaboradores entran con correo y       */
+/* contraseña en el área de clientes (el PIN queda solo para el equipo) */
+/* ================================================================== */
+
+Object.assign(PORTAL_OPEN, { cPortal: 1, cColab: 1 });
+Object.assign(PORTAL_ACTIONS, { cPortal: cPortal_, cColab: cColab_, invitar: invitar_, colabSave: colabSave_, clientColab: clientColab_, colabInfo: colabInfo_, colabLiquidar: colabLiquidar_, clientDelete: clientDelete_ });
+
+/** Crea (o actualiza) la cuenta de acceso de una persona de empresa o de un colaborador y le envía la invitación. */
+function inviteAccount_(o) {
+  const email = String(o.email || '').trim().toLowerCase();
+  if (!mailOk_(email)) fail_('Pon un correo válido para enviarle el acceso.');
+  const accs = read_('Cuentas');
+  let a = accs.find(x => x.email === email);
+  if (a && a.tipo === 'particular' && a.cliente && o.tipo === 'empresa') fail_('Ese correo ya es de un cliente particular. Usa otro correo para el acceso de empresa.');
+  if (!a) {
+    a = { id: 'a-' + uid_().slice(0, 8), email: email, nombre: o.nombre, telefono: o.telefono || '', hash: '', sal: '', tipo: o.tipo, cliente: o.cliente || '', contacto: '', rol: o.permiso || '', ofertas: false, bienvenida: 'x', tokenV: 1, activo: true, creado: iso_(), ultimo: '', procedencia: 'Invitación de dirección', ayuda: 'x', usuario: o.usuario || '', colab: o.colab || '' };
+    insert_('Cuentas', a);
+  } else {
+    if (o.tipo === 'empresa') { a.tipo = 'empresa'; a.usuario = o.usuario || a.usuario; a.cliente = o.cliente || a.cliente; a.rol = o.permiso || a.rol; }
+    if (o.colab) { a.colab = o.colab; if (a.tipo === 'particular' && !a.cliente) a.tipo = 'colaborador'; }
+    if (o.tipo === 'colaborador' && a.tipo !== 'empresa') a.tipo = a.cliente ? a.tipo : 'colaborador';
+    a.activo = true;
+    update_('Cuentas', a);
+  }
+  const quien = o.tipo === 'empresa' ? 'el portal de ' + esc_(o.empresa || 'tu empresa') : 'tu área de colaborador';
+  pmail_(email, 'Tu acceso a Efecto Mariposa', 'Te damos acceso a ' + quien, ['Hola, ' + esc_(String(o.nombre).split(' ')[0]) + ':',
+    o.tipo === 'empresa' ? 'Desde ahora entras con tu correo y una contraseña. Verás vuestros vehículos en directo, fotos, incidencias, albaranes' + (o.permiso === 'responsable' ? ', facturas y vuestra tarifa' : '') + ', y podrás pedir servicios.' : 'Verás los clientes que nos has recomendado, tus comisiones, tus objetivos y tu enlace para compartir.',
+    'Pulsa el botón para crear tu contraseña. El enlace caduca en 7 días; si caduca, pide otro desde «He olvidado la contraseña».'], 'Crear mi contraseña', clientUrl_() + '#inv=' + ctoken_(a, 'm', 7 * 864e5), 'Acceso');
+  return a;
+}
+function invitar_(d, u) {
+  admin_(u);
+  return locked_(() => {
+    if (d.usuario) {
+      const w = read_('Usuarios').find(x => x.id === d.usuario && x.rol === 'cliente');
+      if (!w) fail_('Persona no encontrada.');
+      if (d.email) { w.email = clean_(d.email, 120).toLowerCase(); update_('Usuarios', w); }
+      const c = clientById_(read_('Clientes'), (w.acceso || [])[0]) || {};
+      inviteAccount_({ email: w.email, nombre: w.nombre, telefono: w.telefono, tipo: 'empresa', usuario: w.id, cliente: c.id || '', empresa: c.nombre, permiso: permiso_(w) });
+      return { ok: true, email: w.email };
+    }
+    const c = read_('Clientes').find(x => x.id === d.cliente);
+    if (!c || !c.colab || !c.colab.activo) fail_('Primero activa el colaborador.');
+    const email = clean_(d.email, 120).toLowerCase() || emailsOf_(c)[0];
+    inviteAccount_({ email: email, nombre: c.contacto || c.nombre, telefono: c.telefono, tipo: 'colaborador', colab: c.id });
+    c.colab.acceso = email; update_('Clientes', c);
+    return { ok: true, email: email };
+  });
+}
+/** Abre el portal de empresa desde el área de clientes (sesión del portal, sin PIN). */
+function cPortal_(d, u, req) {
+  const a = csession_(req);
+  if (a.tipo !== 'empresa' || !a.usuario) fail_('Esta cuenta no tiene portal de empresa.');
+  const w = read_('Usuarios').find(x => x.id === a.usuario && x.activo);
+  if (!w) fail_('Tu acceso de empresa está desactivado. Habla con Efecto Mariposa.');
+  return { url: APP.appUrl + '#tk=' + token_(w) };
+}
+
+/* ------------------------------------------------------------------ */
+/* Colaboradores: acuerdo, clientes traídos, comisiones y objetivos    */
+/* ------------------------------------------------------------------ */
+
+function colabFind_(txt) {
+  const t = String(txt || '').trim();
+  if (!t) return null;
+  const up = t.toUpperCase().replace(/[^A-Z0-9]/g, ''), n = norm_(t);
+  return read_('Clientes').find(c => c.colab && c.colab.activo && (String(c.colab.codigo || '').toUpperCase() === up || norm_(c.nombre) === n)) || null;
+}
+function colabCode_(nombre, all) {
+  const base = String(nombre || 'COLAB').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]/g, '').slice(0, 10) || 'COLAB';
+  let code = base, i = 2;
+  while (all.some(c => c.colab && String(c.colab.codigo).toUpperCase() === code)) code = base + (i++);
+  return code;
+}
+/** Dirección activa o ajusta el acuerdo de colaboración de una ficha (empresa, particular o solo colaborador). */
+function colabSave_(d, u) {
+  admin_(u);
+  return locked_(() => {
+    let c = d.id ? read_('Clientes').find(x => x.id === d.id) : null;
+    if (!c && d.nuevo) {
+      const nombre = clean_(d.nombre, 120);
+      if (!nombre) fail_('Indica el nombre del colaborador.');
+      c = { id: 'c-' + uid_().slice(0, 8), nombre: nombre, tipo: 'empresa', protocolo: 'general', tipos: TIPOS_GENERAL, contacto: clean_(d.contacto, 120), telefono: clean_(d.telefono, 40), email: clean_(d.email, 200), revisor: '', carpeta: '', activo: true, creado: iso_(), avisos: false, nif: upper_(d.nif, 20), direccion: '', ritmo: '', ultimo: '', crm: { notas: [] }, tarifa: {}, colab: null, colaborador: '', colabDesde: '' };
+      insert_('Clientes', c);
+    }
+    if (!c) fail_('Ficha no encontrada.');
+    const all = read_('Clientes');
+    const prev = c.colab || {};
+    const objetivos = Array.isArray(d.objetivos) ? d.objetivos.slice(0, 8).map(o => ({ titulo: clean_(o.titulo, 80), desde: dayOk_(o.desde) || '', hasta: dayOk_(o.hasta) || '', clientes: Math.max(0, Math.round(Number(o.clientes) || 0)), facturacion: money_(o.facturacion) || 0, premio: clean_(o.premio, 120) })).filter(o => o.titulo || o.clientes || o.facturacion) : (prev.objetivos || []);
+    c.colab = { activo: d.activo !== false, pct: Math.max(0, Math.min(50, Number(String(d.pct === undefined ? prev.pct : d.pct).replace(',', '.')) || 0)), meses: 12, codigo: prev.codigo || colabCode_(c.nombre, all.filter(x => x.id !== c.id)), solo: d.solo !== undefined ? !!d.solo : !!prev.solo || !!d.nuevo, objetivos: objetivos, acceso: prev.acceso || '', desde: prev.desde || day_() };
+    update_('Clientes', c);
+    return { id: c.id, colab: c.colab, enlace: clientUrl_() + '?col=' + c.colab.codigo };
+  });
+}
+/** Asocia (o quita) el colaborador que trajo a un cliente. */
+function clientColab_(d, u) {
+  admin_(u);
+  return locked_(() => {
+    const c = read_('Clientes').find(x => x.id === d.id);
+    if (!c) fail_('Cliente no encontrado.');
+    if (d.colaborador) {
+      const k = read_('Clientes').find(x => x.id === d.colaborador && x.colab && x.colab.activo);
+      if (!k) fail_('Colaborador no encontrado.');
+      if (k.id === c.id) fail_('Un colaborador no puede traerse a sí mismo.');
+      c.colaborador = k.id; c.colabDesde = dayOk_(d.desde) || c.colabDesde || day_();
+    } else { c.colaborador = ''; c.colabDesde = ''; }
+    update_('Clientes', c);
+    return { colaborador: c.colaborador, colabDesde: dd_(c.colabDesde) };
+  });
+}
+/** Al cobrar del todo una factura de un cliente traído, se apunta la comisión (12 meses desde que llegó). */
+function comisionFactura_(f) {
+  const all = read_('Comisiones'), prev = all.find(x => x.factura === f.id);
+  if (f.estado !== 'Cobrada') {
+    if (prev && prev.estado === 'Pendiente') { const sh = sheet_('Comisiones'); sh.deleteRow(findRow_(sh, prev.id)); bump_('Comisiones'); }
+    return;
+  }
+  if (prev) return;
+  const c = read_('Clientes').find(x => x.id === f.cliente);
+  if (!c || !c.colaborador) return;
+  const k = read_('Clientes').find(x => x.id === c.colaborador);
+  if (!k || !k.colab || !k.colab.activo || !(Number(k.colab.pct) > 0)) return;
+  const desde = dd_(c.colabDesde) || day_(c.creado), fecha = dd_(f.fecha);
+  const lim = new Date(desde + 'T12:00:00Z'); lim.setUTCMonth(lim.getUTCMonth() + (Number(k.colab.meses) || 12));
+  if (fecha < desde || fecha > lim.toISOString().slice(0, 10)) return;
+  const base = money_(f.imponible), pct = Number(k.colab.pct);
+  insert_('Comisiones', { id: 'k-' + uid_().slice(0, 8), colaborador: k.id, cliente: c.id, factura: f.id, numero: f.numero, fecha: fecha, base: base, pct: pct, importe: r2_(base * pct / 100), estado: 'Pendiente', liquidacion: '', creado: iso_() });
+}
+function inicial_(n) { const p = String(n || '').trim().split(/\s+/); return p[0] + (p[1] ? ' ' + p[1][0] + '.' : ''); }
+/** Resumen del colaborador. privado=true para su área (sin datos personales de los clientes). */
+function colabData_(k, privado) {
+  const clients = read_('Clientes').filter(c => c.colaborador === k.id);
+  const fs = read_('Facturas').filter(f => f.estado !== 'Anulada');
+  const kom = read_('Comisiones').filter(x => x.colaborador === k.id).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+  const hoy = day_(), ano = hoy.slice(0, 4), mes = hoy.slice(0, 7);
+  const sum = l => r2_(l.reduce((t, x) => t + Number(x.importe || 0), 0));
+  const fac = (cid, desde, hasta) => fs.filter(f => f.cliente === cid && (!desde || dd_(f.fecha) >= desde) && (!hasta || dd_(f.fecha) <= hasta)).reduce((t, f) => t + money_(f.imponible), 0);
+  const objetivos = (k.colab.objetivos || []).map(o => {
+    const n = clients.filter(c => (!o.desde || dd_(c.colabDesde) >= o.desde) && (!o.hasta || dd_(c.colabDesde) <= o.hasta)).length;
+    const f = r2_(clients.reduce((t, c) => t + fac(c.id, o.desde, o.hasta), 0));
+    return Object.assign({}, o, { llevaClientes: n, llevaFacturacion: f });
+  });
+  return {
+    id: k.id, nombre: k.nombre, pct: k.colab.pct, meses: k.colab.meses || 12, codigo: k.colab.codigo, solo: !!k.colab.solo, acceso: k.colab.acceso || '',
+    enlace: clientUrl_() + '?col=' + k.colab.codigo,
+    clientes: clients.map(c => ({ id: privado ? '' : c.id, nombre: privado ? inicial_(c.nombre) : c.nombre, desde: dd_(c.colabDesde), facturado: r2_(fac(c.id, dd_(c.colabDesde))), servicios: fs.filter(f => f.cliente === c.id).length })),
+    comisiones: kom.map(x => ({ id: x.id, fecha: dd_(x.fecha), numero: privado ? '' : x.numero, cliente: (() => { const c = clients.find(y => y.id === x.cliente); return c ? (privado ? inicial_(c.nombre) : c.nombre) : ''; })(), base: Number(x.base), pct: Number(x.pct), importe: Number(x.importe), estado: x.estado, liquidacion: x.liquidacion })),
+    pendiente: sum(kom.filter(x => x.estado === 'Pendiente')), mes: sum(kom.filter(x => String(x.fecha).slice(0, 7) === mes)), ano: sum(kom.filter(x => String(x.fecha).slice(0, 4) === ano)), pagado: sum(kom.filter(x => x.estado === 'Liquidada')),
+    objetivos: objetivos
+  };
+}
+function colabInfo_(d, u) {
+  admin_(u);
+  const all = read_('Clientes');
+  if (d.id) { const k = all.find(x => x.id === d.id && x.colab); if (!k) fail_('No es colaborador.'); return colabData_(k, false); }
+  return all.filter(x => x.colab && x.colab.activo).map(k => { const x = colabData_(k, false); return { id: x.id, nombre: x.nombre, pct: x.pct, codigo: x.codigo, solo: x.solo, clientes: x.clientes.length, pendiente: x.pendiente, ano: x.ano }; });
+}
+function cColab_(d, u, req) {
+  const a = csession_(req);
+  if (!a.colab) fail_('Esta cuenta no es de colaborador.');
+  const k = read_('Clientes').find(x => x.id === a.colab && x.colab && x.colab.activo);
+  if (!k) fail_('Tu colaboración no está activa. Habla con Efecto Mariposa.');
+  return colabData_(k, true);
+}
+/** Liquidación mensual: marca como pagadas las comisiones pendientes y genera el resumen en PDF. */
+function colabLiquidar_(d, u) {
+  admin_(u);
+  return locked_(() => {
+    const k = read_('Clientes').find(x => x.id === d.id && x.colab);
+    if (!k) fail_('Colaborador no encontrado.');
+    const hasta = dayOk_(d.hasta) || day_();
+    const pend = read_('Comisiones').filter(x => x.colaborador === k.id && x.estado === 'Pendiente' && dd_(x.fecha) <= hasta);
+    if (!pend.length) fail_('No hay comisiones pendientes hasta esa fecha.');
+    const ref = 'L' + hasta.slice(0, 7).replace('-', '') + '-' + k.colab.codigo;
+    const total = r2_(pend.reduce((t, x) => t + Number(x.importe), 0));
+    const clients = read_('Clientes');
+    let archivo = '';
+    try {
+      const html = docHtml_({ tipo: 'LIQUIDACIÓN DE COMISIONES', numero: ref, fecha: hasta, meta: [['Fecha', hasta.split('-').reverse().join('/')], ['Comisión', k.colab.pct + ' % sobre base imponible cobrada'], ['Periodo', 'hasta ' + hasta.split('-').reverse().join('/')]], para: { nombre: k.nombre, nif: k.nif, direccion: k.direccion, contacto: k.contacto }, paraTitulo: 'COLABORADOR',
+        cols: ['Fecha', 'Factura', 'Cliente', 'Base', '%', 'Comisión'], right: [3, 4, 5],
+        filas: pend.map(x => [esc_(dd_(x.fecha).split('-').reverse().join('/')), esc_(x.numero), esc_(inicial_((clientById_(clients, x.cliente) || {}).nombre)), eurP_(Number(x.base)), x.pct + ' %', eurP_(Number(x.importe))]),
+        totales: [['Total a liquidar', eurP_(total), true]],
+        bloques: ['<div class="bx wa"><b>Para cobrarlo:</b> envíanos tu factura por <b>' + eurP_(total) + '</b> (más los impuestos que te correspondan) con la referencia <b>' + ref + '</b>.</div>'] });
+      const folder = folderNamed_(folderNamed_(rootClientes_(), 'Colaboradores'), k.nombre);
+      archivo = saveDoc_(folder, 'Liquidación ' + ref + '.pdf', pdf_(html, 'Liquidación ' + ref)).getId();
+    } catch (e) { console.error('PDF liquidación: ' + e); }
+    pend.forEach(x => { x.estado = 'Liquidada'; x.liquidacion = ref; update_('Comisiones', x); });
+    const to = k.colab.acceso || emailsOf_(k)[0];
+    if (to) pmail_(to, 'Liquidación de comisiones ' + ref, 'Tu liquidación está lista', ['Hola:', 'Hemos cerrado tus comisiones hasta el ' + hasta.split('-').reverse().join('/') + ': <b>' + eurP_(total) + '</b> (' + pend.length + (pend.length > 1 ? ' facturas' : ' factura') + ').', 'Envíanos tu factura con la referencia <b>' + ref + '</b> y te la pagamos. Tienes el detalle en tu área de colaborador.'], 'Ver mi área', clientUrl_() + '#area', 'Comisiones');
+    return { ref: ref, total: total, n: pend.length, archivo: archivo };
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Borrar clientes de prueba                                           */
+/* ------------------------------------------------------------------ */
+
+function clientDelete_(d, u) {
+  admin_(u);
+  return locked_(() => {
+    const c = read_('Clientes').find(x => x.id === d.id);
+    if (!c) fail_('Cliente no encontrado.');
+    if (read_('Facturas').some(f => f.cliente === c.id && f.estado !== 'Anulada')) fail_('Tiene facturas: por ley no se puede borrar. Puedes desactivarlo en «Datos».');
+    if (read_('Servicios').some(s => s.cliente === c.id)) { c.activo = false; update_('Clientes', c); return { desactivado: true }; }
+    const sh = sheet_('Clientes'); sh.deleteRow(findRow_(sh, c.id)); bump_('Clientes');
+    read_('Cuentas').filter(a => a.cliente === c.id).forEach(a => { a.cliente = ''; update_('Cuentas', a); });
+    read_('Contactos').filter(x => x.cliente === c.id).forEach(x => { x.cliente = ''; update_('Contactos', x); });
+    return { borrado: true };
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Presupuestos abiertos: se cierran solos cuando ya hay servicio o    */
+/* factura posterior del mismo cliente                                  */
+/* ------------------------------------------------------------------ */
+
+function quotesAuto_() {
+  const qs = read_('Presupuestos').filter(p => p.estado === 'Enviado');
+  if (!qs.length) return;
+  const cs = read_('Contactos'), fs = read_('Facturas'), sv = read_('Servicios');
+  const cerrar = qs.filter(p => {
+    const cid = p.cliente || ((cs.find(c => c.id === p.contacto) || {}).cliente) || '';
+    if (!cid) return false;
+    const d = dd_(p.fecha);
+    return fs.some(f => f.cliente === cid && f.estado !== 'Anulada' && dd_(f.fecha) >= d) || sv.some(s => s.cliente === cid && day_(s.creado) >= d);
+  });
+  if (!cerrar.length) return;
+  locked_(() => { read_('Presupuestos').filter(p => cerrar.some(x => x.id === p.id) && p.estado === 'Enviado').forEach(p => { p.estado = 'Aceptado'; update_('Presupuestos', p); }); });
 }

@@ -200,6 +200,7 @@ function clientRhythm_(clients, services) {
 
 function crmSync_(d, u) {
   admin_(u);
+  if (typeof quotesAuto_ === 'function') { try { quotesAuto_(); } catch (e) { console.error(e); } }
   const year = Number(day_().slice(0, 4));
   const from = (year - 1) + '-01-01';
   const clients = read_('Clientes');
@@ -209,7 +210,7 @@ function crmSync_(d, u) {
   rh.forEach(r => info[r.id] = r);
   return {
     contactos: read_('Contactos'),
-    clientes: clients.map(c => Object.assign({ id: c.id, nombre: c.nombre, tipo: c.tipo, contacto: c.contacto, telefono: c.telefono, email: c.email, nif: c.nif || '', direccion: c.direccion || '', activo: c.activo !== false, crm: c.crm || {}, tarifa: c.tarifa || {} }, info[c.id] || {})),
+    clientes: clients.map(c => Object.assign({ id: c.id, nombre: c.nombre, tipo: c.tipo, contacto: c.contacto, telefono: c.telefono, email: c.email, nif: c.nif || '', direccion: c.direccion || '', activo: c.activo !== false, crm: c.crm || {}, tarifa: c.tarifa || {}, colab: c.colab || null, colaborador: c.colaborador || '', colabDesde: dd_(c.colabDesde) }, info[c.id] || {})),
     facturas: read_('Facturas').filter(f => String(f.fecha) >= from),
     presupuestos: read_('Presupuestos').filter(p => String(p.fecha) >= from),
     contabilidad: read_('Contabilidad').filter(m => String(m.fecha).slice(0, 10) >= from),
@@ -428,6 +429,7 @@ function invoicePay_(d, u) {
       f.estado = paid >= money_(f.total) - 0.01 ? 'Cobrada' : 'Parcial';
     }
     update_('Facturas', f);
+    if (typeof comisionFactura_ === 'function') comisionFactura_(f);
     return f;
   });
 }

@@ -10,7 +10,7 @@
 
 const APP = {
   nombre: 'Efecto Mariposa · Operaciones',
-  version: '4.0.0',
+  version: '4.1.0',
   appUrl: 'https://efectomariposaclean-create.github.io/em-operaciones/',
   diasEnlace: 30,          // días que el enlace del particular sigue activo tras la entrega
   zona: 'Europe/Madrid',
@@ -37,7 +37,7 @@ const TIPOS_INCIDENCIA = ['Suciedad extraordinaria', 'Daño o avería', 'Zona in
 /* ------------------------------------------------------------------ */
 
 const SCHEMA = {
-  Clientes:   ['id', 'nombre', 'tipo', 'protocolo', 'tipos', 'contacto', 'telefono', 'email', 'revisor', 'carpeta', 'activo', 'creado', 'avisos', 'nif', 'direccion', 'ritmo', 'ultimo', 'crm', 'tarifa'],
+  Clientes:   ['id', 'nombre', 'tipo', 'protocolo', 'tipos', 'contacto', 'telefono', 'email', 'revisor', 'carpeta', 'activo', 'creado', 'avisos', 'nif', 'direccion', 'ritmo', 'ultimo', 'crm', 'tarifa', 'colab', 'colaborador', 'colabDesde'],
   Usuarios:   ['id', 'nombre', 'rol', 'pin', 'acceso', 'horas', 'activo', 'tokenV', 'empresa', 'creado', 'email', 'telefono', 'baja', 'permiso'],
   Servicios:  ['id', 'cliente', 'matricula', 'chasis', 'marca', 'modelo', 'vehiculo', 'tipo', 'estado', 'suciedad', 'alcance', 'exterior', 'extras', 'grupos', 'notas', 'fases', 'maquina', 'recibo', 'creadoPor', 'creado', 'actualizado', 'cerrado', 'archivado', 'carpeta', 'version', 'enlace', 'listo', 'avisos'],
   Tiempos:    ['id', 'servicio', 'usuario', 'tipo', 'inicio', 'fin', 'motivo'],
@@ -51,19 +51,20 @@ const SCHEMA = {
   Movimientos:['id', 'fecha', 'articulo', 'tipo', 'cantidad', 'nivel', 'importe', 'categoria', 'concepto', 'servicio', 'usuario', 'nota'],
   Cargas:     ['id', 'nombre', 'base', 'segun', 'no', 'orden'],
   Ubicaciones:['id', 'ubicacion', 'seccion', 'material', 'regla'],
-  Contactos:  ['id', 'nombre', 'tipo', 'contacto', 'telefono', 'email', 'vehiculo', 'ubicacion', 'fase', 'prioridad', 'proxAccion', 'proxFecha', 'origen', 'importe', 'notas', 'revisar', 'cliente', 'evento', 'carpeta', 'creado', 'actualizado', 'ref'],
+  Contactos:  ['id', 'nombre', 'tipo', 'contacto', 'telefono', 'email', 'vehiculo', 'ubicacion', 'fase', 'prioridad', 'proxAccion', 'proxFecha', 'origen', 'importe', 'notas', 'revisar', 'cliente', 'evento', 'carpeta', 'creado', 'actualizado', 'ref', 'colaborador'],
   Facturas:   ['id', 'numero', 'fecha', 'cliente', 'datos', 'lineas', 'imponible', 'ivaPct', 'iva', 'retPct', 'ret', 'total', 'estado', 'cobros', 'vence', 'archivo', 'notas', 'servicios', 'origen', 'por', 'creado', 'anticipo'],
   Presupuestos:['id', 'numero', 'fecha', 'contacto', 'cliente', 'datos', 'lineas', 'imponible', 'ivaPct', 'iva', 'total', 'validez', 'estado', 'archivo', 'notas', 'por', 'creado'],
-  Cuentas:    ['id', 'email', 'nombre', 'telefono', 'hash', 'sal', 'tipo', 'cliente', 'contacto', 'rol', 'ofertas', 'bienvenida', 'tokenV', 'activo', 'creado', 'ultimo', 'procedencia', 'ayuda'],
+  Cuentas:    ['id', 'email', 'nombre', 'telefono', 'hash', 'sal', 'tipo', 'cliente', 'contacto', 'rol', 'ofertas', 'bienvenida', 'tokenV', 'activo', 'creado', 'ultimo', 'procedencia', 'ayuda', 'usuario', 'colab'],
   Monedero:   ['id', 'tipo', 'cliente', 'cuenta', 'nombre', 'codigo', 'visitas', 'usadas', 'saldo', 'inicial', 'caduca', 'para', 'de', 'email', 'notas', 'movs', 'creado', 'activo', 'usuario', 'total', 'pagado', 'ref', 'matricula', 'comp', 'estado'],
   Ofertas:    ['id', 'titulo', 'texto', 'pct', 'hasta', 'activa', 'enviada', 'n', 'creado'],
   Solicitudes:['id', 'numero', 'fecha', 'cuenta', 'contacto', 'cliente', 'nombre', 'telefono', 'email', 'sel', 'vehiculo', 'resumen', 'lineas', 'manual', 'descuento', 'total', 'estado', 'fotos', 'chat', 'dia', 'propuesto', 'token', 'revisado', 'notas', 'carpeta', 'ofertas', 'evento', 'actualizado', 'vale', 'procedencia', 'vehiculoId', 'matricula', 'servicio'],
+  Comisiones: ['id', 'colaborador', 'cliente', 'factura', 'numero', 'fecha', 'base', 'pct', 'importe', 'estado', 'liquidacion', 'creado'],
   Vehiculos:  ['id', 'cliente', 'cuenta', 'contacto', 'tipo', 'modelo', 'matricula', 'notas', 'creado', 'activo'],
   Contabilidad:['id', 'fecha', 'tipo', 'categoria', 'concepto', 'proveedor', 'imponible', 'ivaPct', 'iva', 'total', 'deducible', 'ivaDed', 'metodo', 'justificante', 'notas', 'origen', 'ref', 'por', 'creado']
 };
 const NOCACHE = { Articulos: 1, Movimientos: 1, Cargas: 1, Ubicaciones: 1 };
-const JSON_COLS = { tipos: 1, acceso: 1, extras: 1, grupos: 1, notas: 1, fases: 1, maquina: 1, recibo: 1, archivado: 1, resuelta: 1, descansos: 1, geo: 1, auditoria: 1, servicios: 1, antes: 1, despues: 1, avisos: 1, conformidad: 1, base: 1, segun: 1, no: 1, crm: 1, tarifa: 1, lineas: 1, cobros: 1, datos: 1, anticipo: 1, sel: 1, descuento: 1, fotos: 1, chat: 1, respuestas: 1, movs: 1, vale: 1, comp: 1 };
-const SCHEMA_V = '13';
+const JSON_COLS = { tipos: 1, acceso: 1, extras: 1, grupos: 1, notas: 1, fases: 1, maquina: 1, recibo: 1, archivado: 1, resuelta: 1, descansos: 1, geo: 1, auditoria: 1, servicios: 1, antes: 1, despues: 1, avisos: 1, conformidad: 1, base: 1, segun: 1, no: 1, crm: 1, tarifa: 1, lineas: 1, cobros: 1, datos: 1, anticipo: 1, sel: 1, descuento: 1, fotos: 1, chat: 1, respuestas: 1, movs: 1, vale: 1, comp: 1, colab: 1 };
+const SCHEMA_V = '14';
 const ARCHIVABLES = ['Servicios', 'Tiempos', 'Incidencias', 'Fotos', 'Jornadas', 'Cambios', 'Actividad'];
 
 /* ------------------------------------------------------------------ */
@@ -355,6 +356,7 @@ function login_(d) {
     cache.put('a:all', String(allCount + 1), 900);
     fail_('PIN incorrecto.');
   }
+  if (u.rol === 'cliente') fail_('Las empresas entran ahora con su correo y contraseña en el área de clientes.');
   cache.remove(dev);
   return { token: token_(u) };
 }
@@ -424,7 +426,7 @@ function sync_(d, u) {
     config: { extras: EXTRAS, tiposGeneral: TIPOS_GENERAL, tiposFoto: TIPOS_FOTO, tiposIncidencia: TIPOS_INCIDENCIA, vehiculos: VEHICULOS, version: APP.version },
     clients: visibleClients.map(c => ({ id: c.id, nombre: c.nombre, tipo: c.tipo, protocolo: c.protocolo, tipos: c.tipos || TIPOS_GENERAL, revisor: c.revisor, contacto: u.rol === 'admin' ? c.contacto : '', telefono: u.rol === 'admin' ? c.telefono : '', email: u.rol === 'admin' ? c.email : '', avisos: c.avisos !== false, activo: c.activo !== false })),
     team: users.filter(x => x.activo || u.rol === 'admin').map(publicUser_),
-    users: u.rol === 'admin' ? users.map(x => ({ id: x.id, nombre: x.nombre, rol: x.rol, acceso: x.acceso || [], horas: Number(x.horas) || 0, activo: !!x.activo, empresa: x.empresa || '', baja: x.baja || '', permiso: x.permiso || '' })) : [],
+    users: u.rol === 'admin' ? users.map(x => ({ id: x.id, nombre: x.nombre, rol: x.rol, acceso: x.acceso || [], horas: Number(x.horas) || 0, activo: !!x.activo, empresa: x.empresa || '', baja: x.baja || '', permiso: x.permiso || '', email: x.rol === 'cliente' ? (x.email || '') : undefined })) : [],
     services: services,
     times: times.filter(t => ids[t.servicio]),
     incidents: read_('Incidencias').filter(i => ids[i.servicio]).map(i => { i.visible = i.visible !== false; return i; }),
@@ -474,7 +476,7 @@ function clientSync_(u) {
   return {
     me: { id: u.id, nombre: u.nombre, rol: 'cliente', acceso: u.acceso, permiso: typeof permiso_ === 'function' ? permiso_(u) : 'coordinador' },
     config: { version: APP.version, tiposFoto: TIPOS_FOTO, tiposIncidencia: TIPOS_INCIDENCIA, extras: [], tiposGeneral: [] },
-    clients: clients.map(c => ({ id: c.id, nombre: c.nombre, tipo: c.tipo })),
+    clients: clients.map(c => ({ id: c.id, nombre: c.nombre, tipo: c.tipo, tarifa: u.permiso === 'responsable' ? (c.tarifa || {}) : undefined })),
     team: [], users: [], times: [],
     services: raw.map(s => clientService_(s, inc)),
     incidents: inc.map(clientIncident_),
@@ -1256,14 +1258,26 @@ function saveUser_(d, u) {
       w.permiso = rol === 'cliente' && ['responsable', 'coordinador', 'ver'].indexOf(d.permiso) >= 0 ? d.permiso : (rol === 'cliente' ? (w.permiso || 'coordinador') : '');
       if (typeof d.activo === 'boolean') w.activo = d.activo;
       if (deactivating) { w.tokenV = (Number(w.tokenV) || 1) + 1; const ch = closeUserTimes_(w.id, iso_(), null); refreshStatus_(ch); }
+      if (rol === 'cliente' && d.email !== undefined) w.email = clean_(d.email, 120).toLowerCase();
       update_('Usuarios', w);
       log_(u, '', 'editar usuario ' + w.id);
-      return { id: w.id };
+      let invitado = '';
+      if (rol === 'cliente' && w.email && w.activo && typeof inviteAccount_ === 'function') {
+        const acc = read_('Cuentas').find(a => a.usuario === w.id);
+        if (!acc || acc.email !== w.email || d.invitar) { const c = clientById_(read_('Clientes'), (w.acceso || [])[0]) || {}; inviteAccount_({ email: w.email, nombre: w.nombre, telefono: w.telefono, tipo: 'empresa', usuario: w.id, cliente: c.id || '', empresa: c.nombre, permiso: w.permiso }); invitado = w.email; }
+        else { acc.rol = w.permiso; update_('Cuentas', acc); }
+      }
+      return { id: w.id, invitado: invitado };
     }
     const pin = nuevoPin_(users);
     const w = { id: 'u-' + uid_().slice(0, 8), nombre: nombre, rol: rol, pin: pinHash_(pin), acceso: acceso, horas: horas, activo: true, tokenV: 1, empresa: clean_(d.empresa, 120), creado: iso_(), permiso: rol === 'cliente' ? (['responsable', 'coordinador', 'ver'].indexOf(d.permiso) >= 0 ? d.permiso : 'coordinador') : '' };
+    if (rol === 'cliente') {
+      w.email = clean_(d.email, 120).toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(w.email)) fail_('Las personas de empresa entran con su correo: escribe su correo.');
+    }
     insert_('Usuarios', w);
     log_(u, '', 'alta usuario ' + w.id);
+    if (rol === 'cliente' && typeof inviteAccount_ === 'function') { const c = clientById_(read_('Clientes'), (w.acceso || [])[0]) || {}; inviteAccount_({ email: w.email, nombre: w.nombre, tipo: 'empresa', usuario: w.id, cliente: c.id || '', empresa: c.nombre, permiso: w.permiso }); return { id: w.id, nombre: nombre, invitado: w.email }; }
     return { id: w.id, pin: pin, nombre: nombre };
   });
 }

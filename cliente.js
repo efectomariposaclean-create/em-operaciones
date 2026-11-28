@@ -24,10 +24,19 @@ const ORIGEN = (() => {
   LS.set('origen', { v: v, t: now });
   return v;
 })();
+/* Enlace de colaborador: ?col=CODIGO (se recuerda 30 días). */
+const COLAB = (() => {
+  let c = null;
+  try { c = new URLSearchParams(location.search).get('col'); } catch (e) {}
+  c = c && String(c).toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 30);
+  const prev = LS.get('col', null), now = Date.now();
+  if (c) { LS.set('col', { v: c, t: now }); return c; }
+  return prev && now - prev.t < 30 * 864e5 ? prev.v : '';
+})();
 const CONOCIO = ['Google', 'Instagram', 'TikTok', 'Facebook', 'Recomendación', 'Caravaning K2', 'Colaborador', 'Folleto o QR', 'Ya soy cliente', 'Otros'];
 const conocioSel = () => '<label class="f">¿Cómo nos has conocido?<select class="in" id="conocio"><option value="">Elige una opción</option>' + CONOCIO.map(x => '<option>' + x + '</option>').join('') + '</select></label><label class="f" id="colabw" hidden>Nombre o código del colaborador<input class="in" id="colab"></label>';
-const conocioBind = () => { const s = $('#conocio'); if (s) s.onchange = () => { $('#colabw').hidden = !/Colaborador|Recomendación/.test(s.value); }; };
-const procedencia = () => ({ origen: ORIGEN, conocio: ($('#conocio') || {}).value || '', colaborador: (($('#colab') || {}).value || '').trim() });
+const conocioBind = () => { const s = $('#conocio'); if (!s) return; s.onchange = () => { $('#colabw').hidden = !/Colaborador|Recomendación/.test(s.value); }; if (COLAB && !s.value) { s.value = 'Colaborador'; $('#colab').value = COLAB; $('#colabw').hidden = false; } };
+const procedencia = () => ({ origen: ORIGEN, conocio: ($('#conocio') || {}).value || '', colaborador: (($('#colab') || {}).value || '').trim() || COLAB });
 
 async function api(action, data) {
   if (!CFG.API_URL) throw Error('La app aún no está conectada.');
@@ -55,7 +64,15 @@ const MIN_BIEN = 150;
 const BONOS = { Escapadas: 7, Temporadas: 10, 'Siempre a punto': 12 };
 const BCOMPO = { estandar: { Escapadas: [[1, 2]], Temporadas: [[1, 4]], 'Siempre a punto': [[1, 2], [0, 4]] }, intensiva: { Escapadas: [[2, 2]], Temporadas: [[2, 2], [1, 2]], 'Siempre a punto': [[2, 2], [0, 4]] } };
 const BSRV = ['Mantenimiento', 'Limpieza estándar', 'Limpieza intensiva'];
-const BQ = { v: 5, a: 0, base: 'estandar', bono: 'Temporadas' };
+const BQ = { tipo: 'auto', v: 5, cv: 1, a: 0, base: 'estandar', bono: 'Temporadas' };
+const BCOMPO_C = { estandar: { Escapadas: [[1, 2]], Temporadas: [[1, 4]], 'Siempre a punto': [[1, 2], [0, 4]] }, intensiva: { Escapadas: [[3, 2]], Temporadas: [[3, 2], [1, 2]], 'Siempre a punto': [[3, 2], [0, 4]] } };
+function bonoCalcC(cv, base, bono) {
+  const car = CARS[cv][1]; let bruto = 0;
+  const comp = BCOMPO_C[base][bono].map(c => { bruto += car[c[0]] * c[1]; return { n: c[1], srv: CSRV[c[0]][0] }; });
+  bruto = Math.round(bruto * 100) / 100;
+  return { comp: comp, visitas: comp.reduce((t, c) => t + c.n, 0), bruto: bruto, pct: BONOS[bono], total: Math.round(bruto * (1 - BONOS[bono] / 100) * 100) / 100 };
+}
+const bcalc = k => BQ.tipo === 'coche' ? bonoCalcC(BQ.cv, BQ.base, k) : bonoCalc(BQ.v, BQ.a, BQ.base, k);
 function bonoCalc(v, a, base, bono) {
   const r = RATES[v]; let bruto = 0;
   const comp = BCOMPO[base][bono].map(c => { const u = Math.round(r[c[0]] * (c[0] ? 1 + a / 100 : 1) * 100) / 100; bruto += u * c[1]; return { n: c[1], srv: BSRV[c[0]] }; });
@@ -312,6 +329,18 @@ function viewLogin(mode) {
     } catch (e) { busy(b, false); toast(e.message, true); }
   };
 }
+function viewInvite(m) {
+  APP.innerHTML = top('Crea tu contraseña', 'Área de clientes', '') + '<div class="pad"><div class="card" style="display:flex;flex-direction:column;gap:10px"><p class="small muted" style="margin:0">Te han dado acceso al área de clientes de Efecto Mariposa. Elige una contraseña (mínimo 8 caracteres) y entrarás siempre con tu correo y esa contraseña.</p>' +
+    '<label class="f">Contraseña nueva<input class="in" type="password" id="ip" autocomplete="new-password"></label><label class="f">Repítela<input class="in" type="password" id="ip2" autocomplete="new-password"></label><button class="btn" id="igo">Guardar y entrar</button></div></div>';
+  $('#igo').onclick = async () => {
+    const b = $('#igo'), p = $('#ip').value;
+    if (p.length < 8) return toast('Mínimo 8 caracteres.', true);
+    if (p !== $('#ip2').value) return toast('Las dos contraseñas no coinciden.', true);
+    busy(b, true);
+    try { setSession(await api('pMagic', { m: m, password: p })); history.replaceState(null, '', location.pathname + '#area'); toast('¡Listo! Ya tienes tu contraseña.'); S.me = null; route(); }
+    catch (e) { busy(b, false); toast(e.message, true); }
+  };
+}
 async function viewMagic(m) {
   APP.innerHTML = '<div class="spin"></div>';
   try { setSession(await api('pMagic', { m: m })); history.replaceState(null, '', location.pathname + '#area'); toast('Has entrado. Puedes poner una contraseña nueva en «Mi cuenta».'); route(); }
@@ -324,6 +353,7 @@ async function viewArea(tab, cached) {
   if (!(cached && S.me)) { try { S.me = await api('cMe', {}); } catch (e) { if (!S.me) return viewError(e.message); } }
   const me = S.me;
   S.cuenta = me.cuenta; LS.set('cuenta', me.cuenta);
+  if (me.cuenta.tipo === 'empresa' || me.cuenta.tipo === 'colaborador') return viewBiz(me, tab);
   const chip = e => '<span class="st ' + (e === 'Hecha' || e === 'Programada' || e === 'Entregado' || e === 'Listo' ? 'ok' : /Rechaz|Cancel/.test(e) ? 'bad' : '') + '">' + esc(e) + '</span>';
   const fd = d => d ? new Date(d.length === 10 ? d + 'T12:00:00Z' : d).toLocaleDateString('es-ES') : '';
   const TABS = [['inicio', 'Inicio'], ['docs', 'Documentos'], ['monedero', 'Monedero'], ['cuenta', 'Cuenta']];
@@ -358,12 +388,15 @@ async function viewArea(tab, cached) {
       gifts.map(m => '<div class="wcard gift' + (m.estado === 'Usado' || m.estado === 'Caducado' ? ' off' : '') + '"><div class="wtop"><span>🎁 VALE REGALO</span><span class="wst">' + esc(m.estado === 'Asignado' ? 'Tuyo' : m.estado) + '</span></div><div class="wamt">' + eur(m.saldo) + '</div><div class="wcode">' + esc(m.codigo) + '</div><div class="wsub">' + (m.de ? 'De ' + esc(m.de) + ' · ' : '') + 'de ' + eur(m.inicial) + (m.caduca ? ' · válido hasta el ' + fd(m.caduca) : '') + '</div>' + (m.estado === 'Usado' ? '<div class="stamp">USADO</div>' : '') + '</div>').join('') +
       '<div class="card"><b style="color:var(--navy)">¿Tienes un vale regalo?</b><p class="small muted" style="margin-top:2px">Guárdalo aquí para no perderlo. Se descuenta del total cuando pidas tu servicio.</p><div style="display:flex;gap:8px;margin-top:8px"><input class="in" id="gc" placeholder="VR2026001" style="margin:0;text-transform:uppercase"><button class="btn sm" id="gcb">Añadir</button></div></div>' +
       '<div class="card" id="bcalc"><b style="color:var(--navy);font-size:16px">Calcula tu bono</b><p class="small muted" style="margin:3px 0 8px">Varias limpiezas al año para tu vehículo, con descuento. Pagas el 50 % para activarlo y el resto poco a poco en cada visita.</p>' +
+      '<div class="seg">' + [['auto', 'Autocaravana / camper'], ['coche', 'Coche']].map(x => '<button data-bt="' + x[0] + '" class="' + (BQ.tipo === x[0] ? 'on' : '') + '">' + x[1] + '</button>').join('') + '</div>' +
+      (BQ.tipo === 'coche' ? '<label class="f">Tamaño del coche<select class="in" id="bcv">' + CARS.map((c, i) => '<option value="' + i + '"' + (i === BQ.cv ? ' selected' : '') + '>' + c[0] + '</option>').join('') + '</select></label>' :
       '<label class="f">Tu vehículo<select class="in" id="bv">' + NAMES.map((n, i) => '<option value="' + i + '"' + (i === BQ.v ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' +
-      '<div class="h">Antigüedad</div><div class="seg" id="ba">' + [[0, 'Hasta 5 años'], [10, '5 a 10'], [25, 'Más de 10']].map(x => '<button data-ba="' + x[0] + '" class="' + (BQ.a === x[0] ? 'on' : '') + '">' + x[1] + '</button>').join('') + '</div>' +
+      '<div class="h">Antigüedad</div><div class="seg" id="ba">' + [[0, 'Hasta 5 años'], [10, '5 a 10'], [25, 'Más de 10']].map(x => '<button data-ba="' + x[0] + '" class="' + (BQ.a === x[0] ? 'on' : '') + '">' + x[1] + '</button>').join('') + '</div>') +
       '<div class="h">Tipo de limpieza</div><div class="seg">' + [['estandar', 'Estándar'], ['intensiva', 'Intensiva']].map(x => '<button data-bb="' + x[0] + '" class="' + (BQ.base === x[0] ? 'on' : '') + '">' + x[1] + '</button>').join('') + '</div>' +
-      '<div class="h">Bono</div>' + Object.keys(BONOS).map(k => { const c = bonoCalc(BQ.v, BQ.a, BQ.base, k); return '<button class="opt' + (BQ.bono === k ? ' on' : '') + '" data-bk="' + esc(k) + '"><span class="dot"></span><span class="t"><b>' + esc(k) + ' · ' + c.visitas + ' visitas · −' + c.pct + ' %</b><span>' + esc(c.comp.map(x => x.n + ' × ' + x.srv.toLowerCase()).join(' + ')) + '</span></span><span class="p">' + eur(c.total) + '</span></button>'; }).join('') +
-      (() => { const c = bonoCalc(BQ.v, BQ.a, BQ.base, BQ.bono); return '<div class="lines" style="margin-top:8px"><div><span>Precio sin bono</span><b style="text-decoration:line-through;color:var(--muted)">' + eur(c.bruto) + '</b></div><div class="d"><span>Te ahorras (−' + c.pct + ' %)</span><b>' + eur(c.bruto - c.total) + '</b></div><div class="tt"><span>Tu bono</span><b>' + eur(c.total) + '</b></div><div style="border:0"><span>Para activarlo (50 %)</span><b>' + eur(c.total / 2) + '</b></div></div>'; })() +
+      '<div class="h">Bono</div>' + Object.keys(BONOS).map(k => { const c = bcalc(k); return '<button class="opt' + (BQ.bono === k ? ' on' : '') + '" data-bk="' + esc(k) + '"><span class="dot"></span><span class="t"><b>' + esc(k) + ' · ' + c.visitas + ' visitas · −' + c.pct + ' %</b><span>' + esc(c.comp.map(x => x.n + ' × ' + x.srv.toLowerCase()).join(' + ')) + '</span></span><span class="p">' + eur(c.total) + '</span></button>'; }).join('') +
+      (() => { const c = bcalc(BQ.bono); return '<div class="lines" style="margin-top:8px"><div><span>Precio sin bono</span><b style="text-decoration:line-through;color:var(--muted)">' + eur(c.bruto) + '</b></div><div class="d"><span>Te ahorras (−' + c.pct + ' %)</span><b>' + eur(c.bruto - c.total) + '</b></div><div class="tt"><span>Tu bono</span><b>' + eur(c.total) + '</b></div><div style="border:0"><span>Para activarlo (50 %)</span><b>' + eur(c.total / 2) + '</b></div></div>'; })() +
       '<label class="f" style="margin-top:8px">Matrícula del vehículo<input class="in" id="bm" placeholder="1234 ABC" style="text-transform:uppercase"></label>' +
+      (BQ.tipo === 'coche' ? '<label class="f" style="margin-top:8px">Segundo coche (opcional)<input class="in" id="bm2" placeholder="Otra matrícula" style="text-transform:uppercase"></label><p class="small muted" style="margin-top:4px">Puedes compartir el bono entre dos coches tuyos. El precio se calcula con el más grande: elige arriba ese tamaño.</p>' : '') +
       '<details style="margin-top:8px"><summary>Condiciones del bono</summary><ul class="prep"><li>Va unido a <b>un vehículo</b> (su matrícula) y a ti. No se puede usar en otro vehículo ni pasar a otra persona.</li><li>Pagas el <b>50 % para activarlo</b> y el resto repartido en cada visita.</li><li>Es válido <b>12 meses</b> desde que se activa. Si al final te queda alguna visita, escríbenos y buscamos una solución. <b>No se devuelve el dinero.</b></li><li>El precio es para el vehículo en <b>estado habitual</b>. Si en la primera visita necesita una limpieza de recuperación, te avisamos del suplemento antes de empezar.</li><li>No se suma al −10 % de bienvenida ni a otras ofertas: el bono ya tiene su descuento.</li></ul></details>' +
       '<label class="ck" style="margin-top:8px"><input type="checkbox" id="bok"> <span>He leído y acepto las condiciones del bono.</span></label>' +
       '<button class="btn" id="bgo" style="margin-top:10px">Lo quiero</button></div>';
@@ -385,10 +418,12 @@ async function viewArea(tab, cached) {
   $$('[data-file]').forEach(el => el.onclick = async () => { toast('Preparando el PDF…'); try { const x = await api('cFile', { kind: el.dataset.file, id: el.dataset.id }); const a = document.createElement('a'); a.href = x.data; a.download = x.name; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { toast(e.message, true); } });
   const redraw = () => { const y = window.scrollY; viewArea('monedero', true).then(() => window.scrollTo(0, y)); };
   if ($('#bv')) $('#bv').onchange = e => { BQ.v = Number(e.target.value); redraw(); };
+  if ($('#bcv')) $('#bcv').onchange = e => { BQ.cv = Number(e.target.value); redraw(); };
+  $$('[data-bt]').forEach(b => b.onclick = () => { BQ.tipo = b.dataset.bt; redraw(); });
   $$('[data-ba]').forEach(b => b.onclick = () => { BQ.a = Number(b.dataset.ba); redraw(); });
   $$('[data-bb]').forEach(b => b.onclick = () => { BQ.base = b.dataset.bb; redraw(); });
   $$('[data-bk]').forEach(b => b.onclick = () => { BQ.bono = b.dataset.bk; redraw(); });
-  if ($('#bgo')) $('#bgo').onclick = async () => { const b = $('#bgo'); if (!$('#bok').checked) return toast('Acepta las condiciones del bono.', true); busy(b, true); try { await api('cBonoPedir', { v: BQ.v, a: BQ.a, base: BQ.base, bono: BQ.bono, matricula: $('#bm').value, acepto: true }); toast('¡Bono reservado! Te hemos enviado los datos de pago.'); S.me = null; window.scrollTo(0, 0); viewArea('monedero'); } catch (e) { busy(b, false); toast(e.message, true); } };
+  if ($('#bgo')) $('#bgo').onclick = async () => { const b = $('#bgo'); if (!$('#bok').checked) return toast('Acepta las condiciones del bono.', true); busy(b, true); try { await api('cBonoPedir', { tipo: BQ.tipo === 'coche' ? 'coche' : '', v: BQ.v, cv: BQ.cv, a: BQ.a, base: BQ.base, bono: BQ.bono, matricula: $('#bm').value, matricula2: ($('#bm2') || {}).value || '', acepto: true }); toast('¡Bono reservado! Te hemos enviado los datos de pago.'); S.me = null; window.scrollTo(0, 0); viewArea('monedero'); } catch (e) { busy(b, false); toast(e.message, true); } };
   $$('[data-paid]').forEach(b => b.onclick = async () => { busy(b, true); try { await api('cBonoAviso', { id: b.dataset.paid, como: 'Bizum/transferencia' }); toast('¡Gracias! Lo comprobamos y te avisamos al activarlo.'); busy(b, false); b.textContent = 'Aviso enviado ✓'; b.disabled = true; } catch (e) { busy(b, false); toast(e.message, true); } });
   if ($('#gcb')) $('#gcb').onclick = async () => { try { await api('cCanjear', { codigo: $('#gc').value }); toast('¡Vale añadido!'); viewArea('monedero'); } catch (e) { toast(e.message, true); } };
   if ($('#of')) $('#of').onchange = async e => { try { await api('cSave', { ofertas: e.target.checked }); toast('Guardado'); } catch (x) { toast(x.message, true); } };
@@ -398,6 +433,44 @@ async function viewArea(tab, cached) {
   if ($('#pwb')) $('#pwb').onclick = async () => { try { await api('cSave', { actual: $('#pa').value, password: $('#pn').value }); toast('Contraseña cambiada'); } catch (x) { toast(x.message, true); } };
   if ($('#out')) $('#out').onclick = () => { S.me = null; logout(); };
 }
+async function viewBiz(me, tab) {
+  const esCol = !!me.cuenta.colab, TABS = [];
+  if (me.portal) TABS.push(['flota', 'Mi flota']);
+  if (esCol) TABS.push(['colab', 'Colaborador']);
+  TABS.push(['cuenta', 'Cuenta']);
+  if (!TABS.some(t => t[0] === tab)) tab = TABS[0][0];
+  if (!S.preview) LS.set('tab', tab);
+  let h = '';
+  if (tab === 'flota') {
+    h = '<div class="card center" style="display:flex;flex-direction:column;gap:10px"><b style="color:var(--navy);font-size:17px">' + esc(me.empresa || 'Tu empresa') + '</b><p class="small muted" style="margin:0">Vehículos, fotos, albaranes, incidencias' + (me.cuenta.tipo === 'empresa' ? ' y lo que tengas permitido' : '') + '. Se abre la app de vuestra flota.</p><button class="btn" id="bflota">Abrir mi flota</button></div>';
+  } else if (tab === 'colab') {
+    h = '<div class="spin"></div>';
+  } else {
+    h = '<div class="card" style="display:flex;flex-direction:column;gap:10px"><b style="color:var(--navy)">Mis datos</b>' +
+      '<label class="f">Nombre<input class="in" id="dn" value="' + esc(me.cuenta.nombre) + '"></label>' +
+      '<label class="f">Teléfono<input class="in" id="dt" type="tel" value="' + esc(me.cuenta.telefono || '') + '"></label>' +
+      '<label class="f">Correo (con él entras)<input class="in" id="de" type="email" value="' + esc(me.cuenta.email) + '"></label>' +
+      '<button class="btn sm" id="dsv">Guardar mis datos</button></div>' +
+      '<div class="card" style="display:flex;flex-direction:column;gap:10px"><details><summary>Cambiar contraseña</summary><label class="f" style="margin-top:8px">Actual<input class="in" type="password" id="pa"></label><label class="f" style="margin-top:8px">Nueva<input class="in" type="password" id="pn" autocomplete="new-password"></label><button class="btn sm" id="pwb" style="margin-top:8px">Guardar</button></details><button class="btn ghost" id="out">Cerrar sesión</button></div><p class="small muted center">¿Dudas? Llámanos al <a href="tel:614065526">614 065 526</a></p>';
+  }
+  APP.innerHTML = top('Hola, ' + me.cuenta.nombre.split(' ')[0], S.preview ? 'Vista de dirección · solo lectura' : (me.empresa || 'Mi área'), null) + '<div class="pad">' + (TABS.length > 1 ? '<div class="seg">' + TABS.map(t => '<button data-tab="' + t[0] + '" class="' + (t[0] === tab ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div>' : '') + '<div id="bizb">' + h + '</div></div>';
+  $$('[data-tab]').forEach(b => b.onclick = () => viewArea(b.dataset.tab, true));
+  if ($('#bflota')) $('#bflota').onclick = async () => { const b = $('#bflota'); if (S.preview) return toast('En la vista previa no se abre la flota.', true); busy(b, true); try { const r = await api('cPortal', {}); location.href = 'index.html' + r.url.slice(r.url.indexOf('#')); } catch (e) { busy(b, false); toast(e.message, true); } };
+  if ($('#dsv')) $('#dsv').onclick = async () => { try { const r = await api('cSave', Object.assign({ nombre: $('#dn').value.trim(), email: $('#de').value.trim() }, $('#dt').value.trim() ? { telefono: $('#dt').value.trim() } : {})); S.cuenta = r.cuenta; LS.set('cuenta', r.cuenta); toast('Datos guardados'); S.me = null; viewArea('cuenta'); } catch (x) { toast(x.message, true); } };
+  if ($('#pwb')) $('#pwb').onclick = async () => { try { await api('cSave', { actual: $('#pa').value, password: $('#pn').value }); toast('Contraseña cambiada'); } catch (x) { toast(x.message, true); } };
+  if ($('#out')) $('#out').onclick = () => { S.me = null; logout(); };
+  if (tab !== 'colab') return;
+  let x; try { x = await api('cColab', {}); } catch (e) { $('#bizb').innerHTML = '<div class="card"><p class="small" style="color:var(--bad)">' + esc(e.message) + '</p></div>'; return; }
+  const qr = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=10&data=' + encodeURIComponent(x.enlace);
+  const bar = (v, t) => '<div class="wbar" style="background:#e9eef5"><i style="width:' + Math.min(100, Math.round(100 * v / t)) + '%"></i></div>';
+  $('#bizb').innerHTML =
+    '<div class="card"><b style="color:var(--navy)">Tu enlace</b><p class="small muted" style="margin:2px 0 8px">Compártelo o enseña el QR. Quien pida presupuesto desde aquí queda asociado a ti.</p><div style="display:flex;gap:12px;align-items:center"><img src="' + qr + '" alt="QR" style="width:110px;height:110px;border-radius:10px;border:1px solid #e3e8ef"><div style="flex:1;min-width:0"><div class="small" style="word-break:break-all">' + esc(x.enlace) + '</div><button class="btn sm" id="ccp" style="margin-top:8px">Copiar enlace</button> <a class="btn sm ghost" href="' + qr + '" target="_blank" rel="noopener" style="margin-top:8px">Descargar QR</a></div></div><p class="small muted" style="margin-top:8px">Tu código: <b>' + esc(x.codigo) + '</b></p></div>' +
+    '<div class="card"><b style="color:var(--navy)">Tus comisiones · ' + esc(x.pct) + ' %</b><div class="lines" style="margin-top:6px"><div><span>Este mes</span><b>' + eur(x.mes) + '</b></div><div><span>Este año</span><b>' + eur(x.ano) + '</b></div><div class="d"><span>Pendiente de liquidar</span><b>' + eur(x.pendiente) + '</b></div><div style="border:0"><span>Ya pagado</span><b>' + eur(x.pagado) + '</b></div></div><p class="small muted" style="margin-top:6px">Ganas el ' + esc(x.pct) + ' % de lo que factura cada cliente que traes (sin IVA), durante sus primeros 12 meses. Cada mes te enviamos la liquidación y tú nos envías tu factura por ese importe.</p></div>' +
+    (x.objetivos.length ? '<div class="card"><b style="color:var(--navy)">Tus objetivos</b>' + x.objetivos.map(o => '<div style="margin-top:10px"><b class="small">' + esc(o.titulo || 'Objetivo') + '</b>' + (o.premio ? '<span class="small muted"> · ' + esc(o.premio) + '</span>' : '') + (o.hasta ? '<div class="small muted">Hasta el ' + fday(o.hasta) + '</div>' : '') + (o.clientes ? '<div class="small" style="margin-top:4px">Clientes: ' + o.llevaClientes + ' de ' + o.clientes + '</div>' + bar(o.llevaClientes, o.clientes) : '') + (o.facturacion ? '<div class="small" style="margin-top:4px">Facturación: ' + eur(o.llevaFacturacion) + ' de ' + eur(Number(o.facturacion)) + '</div>' + bar(o.llevaFacturacion, Number(o.facturacion)) : '') + '</div>').join('') + '</div>' : '') +
+    '<div class="card"><b style="color:var(--navy)">Clientes que has traído</b>' + (x.clientes.length ? x.clientes.map(c => '<div class="li"><div class="g"><b>' + esc(c.nombre) + '</b><span>Desde el ' + fday(c.desde) + ' · ' + c.servicios + ' servicios</span></div></div>').join('') : '<p class="small muted" style="margin-top:4px">Aún ninguno. ¡Comparte tu enlace!</p>') + '</div>' +
+    (x.comisiones.length ? '<div class="card"><b style="color:var(--navy)">Movimientos</b>' + x.comisiones.slice(0, 40).map(k => '<div class="li"><div class="g"><b>' + eur(k.importe) + '</b><span>' + fday(k.fecha) + ' · ' + esc(k.cliente) + ' · ' + esc(k.pct) + ' % de ' + eur(k.base) + '</span></div><span class="st ' + (k.estado === 'Liquidada' ? 'ok' : '') + '">' + esc(k.estado) + '</span></div>').join('') + '</div>' : '');
+  $('#ccp').onclick = () => (navigator.clipboard ? navigator.clipboard.writeText(x.enlace) : Promise.reject()).then(() => toast('Enlace copiado'), () => toast(x.enlace));
+}
 function viewError(m) { APP.innerHTML = top('Efecto Mariposa', '', '') + '<div class="pad"><div class="card center"><p style="color:var(--bad)">' + esc(m) + '</p><a class="btn ghost" style="margin-top:12px" href="#">Ir al inicio</a></div></div>'; }
 
 function route() {
@@ -406,6 +479,7 @@ function route() {
   if (h.indexOf('s=') === 0) return viewSol(h.slice(2));
   if (h.indexOf('fotos=') === 0) return viewPhotos(h.slice(6));
   if (h.indexOf('m=') === 0) return viewMagic(h.slice(2));
+  if (h.indexOf('inv=') === 0) return viewInvite(h.slice(4));
   if (h.indexOf('ver=') === 0) { S.preview = true; S.token = h.slice(4); S.me = null; history.replaceState(null, '', location.pathname + '#area'); return viewArea('inicio'); }
   if (h.indexOf('info=') === 0) return viewInfo(h.slice(5));
   if (h === 'presupuesto') return viewQuote();

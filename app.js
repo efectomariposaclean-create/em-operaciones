@@ -3,7 +3,7 @@
 'use strict';
 
 const CFG = window.EM_CONFIG || {};
-const VERSION = '4.0.0';
+const VERSION = '4.1.0';
 const ROOT = document.getElementById('root');
 
 /* ============================ Utilidades ============================ */
@@ -115,6 +115,7 @@ const ICONS = {
 const icon = (n, c) => '<svg class="i ' + (c || '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[n] || '') + '</svg>';
 
 /* ============================ Estado ============================ */
+(function () { const m = location.hash.match(/^#tk=([^&]+)/); if (m) { try { localStorage.setItem('em.token', JSON.stringify(decodeURIComponent(m[1]))); localStorage.removeItem('em.snap'); localStorage.setItem('em.portal', '"1"'); } catch (e) {} history.replaceState(null, '', location.pathname + location.search); } })();
 
 const S = {
   token: LS.get('token', ''),
@@ -447,6 +448,7 @@ function logout(msg) {
   S.token = ''; S.data = null; S.queue = []; S.crm = null; S.inv = null; S.sols = null; S.sol = null; S.wallet = null; S.atender = null;
   LS.del('token'); LS.del('snap'); LS.del('crm'); LS.del('inv');
   IDB.clear();
+  if (LS.get('portal', '') === '1') { LS.del('portal'); location.href = 'cliente.html#area'; return; }
   renderLogin(typeof msg === 'string' ? msg : '');
 }
 
@@ -1416,6 +1418,7 @@ function editUser(u) {
     '<div id="uemp" ' + (st.rol === 'subcontrata' ? '' : 'hidden') + '><label class="f">Empresa subcontratada</label><input class="in" id="ue" value="' + esc(st.empresa) + '"></div>' +
     '<div id="uacc" ' + (st.rol === 'admin' ? 'hidden' : '') + '><label class="f" id="ual">' + (st.rol === 'cliente' ? 'Empresa a la que pertenece' : 'Clientes a los que tiene acceso') + '</label><div class="chips" id="ua">' + opts.map(o => '<button type="button" data-a="' + esc(o[0]) + '" class="' + (st.acceso.indexOf(o[0]) >= 0 ? 'on' : '') + '">' + esc(o[1]) + '</button>').join('') + '</div></div>' +
     '<div id="uhw" ' + (st.rol === 'cliente' ? 'hidden' : '') + '><label class="f">Horas semanales de contrato</label><input class="in" id="uh" type="number" min="0" max="60" value="' + esc(st.horas || 0) + '"></div>' +
+    '<div id="umail" ' + (st.rol === 'cliente' ? '' : 'hidden') + '><label class="f">Correo (con él entra en el área de clientes)</label><input class="in" id="uem" type="email" value="' + esc(st.email || '') + '"><p class="tiny muted">Le llega un correo para crear su contraseña. Las empresas ya no usan PIN.</p>' + (u && u.email ? '<button type="button" class="btn sm soft" id="uinv" style="margin-top:6px">' + icon('mail', 's') + 'Reenviar invitación</button>' : '') + '</div>' +
     '<div id="uperm" ' + (st.rol === 'cliente' ? '' : 'hidden') + '><label class="f">Qué puede hacer</label><div class="seg" id="up">' + [['responsable', 'Responsable'], ['coordinador', 'Coordinador'], ['ver', 'Solo ver']].map(x => '<button type="button" data-p="' + x[0] + '" class="' + ((st.permiso || 'coordinador') === x[0] ? 'on' : '') + '">' + x[1] + '</button>').join('') + '</div><p class="tiny muted" id="upd" style="margin-top:6px"></p></div>' +
     '<p class="tiny muted" id="ucl" style="margin-top:10px" ' + (st.rol === 'cliente' ? '' : 'hidden') + '>' + icon('lock', 's') + ' Solo verá los vehículos de su empresa: avance, fotos e incidencias visibles y albaranes. Nunca ve trabajadores, horas, precios ni notas internas.</p>' +
     (u && !isDir ? '<div class="row between" style="margin-top:14px"><b style="font-size:14px">Acceso activo</b><label class="switch"><input type="checkbox" id="uact" ' + (st.activo ? 'checked' : '') + '><span></span></label></div>' : '') +
@@ -1428,19 +1431,21 @@ function editUser(u) {
     const PD = { responsable: 'Lo ve todo: vehículos, fotos, albaranes y conformidad, facturas. Puede pedir servicios.', coordinador: 'Vehículos, fotos, incidencias, albaranes y conformidad. Puede pedir servicios. No ve facturas.', ver: 'Solo consulta el estado de los vehículos y las fotos. No firma ni pide servicios.' };
     st.permiso = st.permiso || 'coordinador'; $('#upd', el).textContent = PD[st.permiso];
     $$('[data-p]', el).forEach(b => b.onclick = () => { st.permiso = b.dataset.p; $$('[data-p]', el).forEach(x => x.classList.toggle('on', x === b)); $('#upd', el).textContent = PD[st.permiso]; });
-    $$('[data-r]', el).forEach(b => b.addEventListener('click', () => { $('#uperm', el).hidden = st.rol !== 'cliente'; }));
+    $$('[data-r]', el).forEach(b => b.addEventListener('click', () => { $('#uperm', el).hidden = st.rol !== 'cliente'; $('#umail', el).hidden = st.rol !== 'cliente'; }));
+    const ui = $('#uinv', el); if (ui) ui.onclick = async () => { let r; if (await command(async () => { r = await api('invitar', { usuario: u.id, email: $('#uem', el).value }); }, '')) toast('Invitación enviada a ' + r.email); };
     const pinBtn = $('#upin');
     if (pinBtn) pinBtn.onclick = async () => {
       if (!(await confirmSheet('Nuevo PIN', 'El PIN actual de ' + u.nombre + ' dejará de funcionar.', 'Generar nuevo PIN'))) return;
       let res; if (await command(async () => { res = await api('resetPin', { id: u.id }); })) showPin(res.nombre, res.pin);
     };
     $('#usv').onclick = async () => {
-      const body = { id: u ? u.id : '', nombre: $('#un').value, rol: st.rol, acceso: st.rol === 'admin' ? [] : st.acceso, horas: Number($('#uh').value) || 0, empresa: $('#ue') ? $('#ue').value : '', permiso: st.rol === 'cliente' ? st.permiso : '' };
+      const body = { id: u ? u.id : '', nombre: $('#un').value, rol: st.rol, acceso: st.rol === 'admin' ? [] : st.acceso, horas: Number($('#uh').value) || 0, empresa: $('#ue') ? $('#ue').value : '', permiso: st.rol === 'cliente' ? st.permiso : '', email: st.rol === 'cliente' ? $('#uem', el).value.trim() : undefined };
       if ($('#uact')) body.activo = $('#uact').checked;
       if (!body.nombre.trim()) return toast('Indica el nombre.', true);
       if (body.rol !== 'admin' && !body.acceso.length) return toast(body.rol === 'cliente' ? 'Elige su empresa.' : 'Asigna al menos un cliente.', true);
       let res;
-      if (await command(async () => { res = await api('saveUser', body); await sync(true); }, u ? 'Cambios guardados' : '')) { close(); if (res && res.pin) showPin(res.nombre, res.pin); }
+      if (body.rol === 'cliente' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email || '')) return toast('Escribe su correo: con él entra.', true);
+      if (await command(async () => { res = await api('saveUser', body); await sync(true); }, u ? 'Cambios guardados' : '')) { close(); if (res && res.invitado) toast('Invitación enviada a ' + res.invitado); else if (res && res.pin) showPin(res.nombre, res.pin); }
     };
   });
 }
@@ -1983,7 +1988,9 @@ CVIEWS.avisos = function () {
 };
 CVIEWS.albaranes = function () {
   const resp = me().permiso === 'responsable';
-  return { title: resp ? 'Documentos' : 'Albaranes', html: (resp ? '<div class="sec" style="margin-top:0"><h2>Facturas</h2></div><div id="flist"><div class="card empty">Cargando…</div></div><div class="sec"><h2>Albaranes</h2></div>' : '') + '<p class="small muted" style="margin:0 2px 10px">Cada albarán reúne los vehículos entregados en un periodo, con la firma de cada entrega. ' + (me().permiso === 'ver' ? 'Tu usuario es de consulta: la conformidad la da tu responsable.' : 'Revísalo y da tu conformidad.') + '</p><div id="alist"><div class="card empty">Cargando…</div></div>', mount: async () => {
+  const tar = resp ? ((D.clients()[0] || {}).tarifa || {}) : {};
+  const tarHtml = resp && Object.keys(tar).length ? '<div class="sec" style="margin-top:0"><h2>Vuestra tarifa</h2></div><div class="card list" style="padding:2px 14px">' + Object.keys(tar).map(k => '<div class="li" style="display:flex"><div class="grow">' + esc(k) + '</div><b>' + money(tar[k]) + '</b></div>').join('') + '<p class="tiny muted" style="padding:6px 0">Precio por vehículo sin IVA, según vuestro acuerdo. Los extras se presupuestan aparte.</p></div>' : '';
+  return { title: resp ? 'Documentos' : 'Albaranes', html: tarHtml + (resp ? '<div class="sec"' + (tarHtml ? '' : ' style="margin-top:0"') + '><h2>Facturas</h2></div><div id="flist"><div class="card empty">Cargando…</div></div><div class="sec"><h2>Albaranes</h2></div>' : '') + '<p class="small muted" style="margin:0 2px 10px">Cada albarán reúne los vehículos entregados en un periodo, con la firma de cada entrega. ' + (me().permiso === 'ver' ? 'Tu usuario es de consulta: la conformidad la da tu responsable.' : 'Revísalo y da tu conformidad.') + '</p><div id="alist"><div class="card empty">Cargando…</div></div>', mount: async () => {
     loadReceipts($('#alist'), false);
     if (!resp) return;
     try {
@@ -2331,7 +2338,7 @@ VIEWS.panel = function () {
   const segCl = S.crm.clientes.filter(c => c.crm && c.crm.proxFecha && c.crm.proxFecha <= shiftDay(hoy, 2));
   const vigilar = S.crm.clientes.filter(c => c.activo && (c.estado === 'Se enfría' || c.estado === 'Preguntar')).sort((a, b) => (b.dias || 0) / (b.ritmo || 1) - (a.dias || 0) / (a.ritmo || 1));
   const revisar = S.crm.contactos.filter(c => c.revisar && !c.cliente && ['Perdido', 'Archivado'].indexOf(c.fase) < 0).length;
-  const quotes = (S.crm.presupuestos || []).filter(p => p.estado === 'Enviado');
+  const quotes = (S.crm.presupuestos || []).filter(p => p.estado === 'Enviado').sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
   const bar = (v, t) => t ? '<div class="progress" style="margin-top:6px"><i style="width:' + Math.min(100, Math.round(100 * v / t)) + '%"></i></div><small class="tiny muted">' + Math.round(100 * v / t) + ' % de ' + C.eur0(t) + '</small>' : '';
   const kpi = (lbl, val, extra, to, cls) => '<button class="kpi ' + (cls || '') + '" data-act="go" data-to="' + to + '"><small>' + esc(lbl) + '</small><b>' + val + '</b>' + (extra || '') + '</button>';
   const html =
@@ -2343,9 +2350,9 @@ VIEWS.panel = function () {
     '<div class="card"><div class="row between"><h2>' + icon('target', 's') + ' Seguimientos</h2><a class="link small" href="#/comercial">Ver todo</a></div><div class="list">' +
     (seg.length + segCl.length ? segCl.map(c => rowLink('ficha/' + c.id, esc(c.nombre), 'Cliente · ' + esc(c.crm.proxAccion || 'Seguimiento'), whenChip(c.crm.proxFecha))).join('') + seg.slice(0, 8).map(c => rowLink('contacto/' + c.id, esc(c.nombre), esc(c.proxAccion || c.fase), whenChip(c.proxFecha))).join('') + (seg.length > 8 ? '<p class="tiny muted" style="padding-top:6px">y ' + (seg.length - 8) + ' más</p>' : '') : '<p class="small muted" style="padding:8px 0">Nada pendiente para hoy.</p>') + '</div></div>' +
     '<div class="card"><div class="row between"><h2>' + icon('users', 's') + ' Clientes a vigilar</h2><a class="link small" href="#/clientes">Clientes</a></div><div class="list">' +
-    (vigilar.length ? vigilar.slice(0, 6).map(c => rowLink('ficha/' + c.id, esc(c.nombre), 'Suele: ' + ritmoTxt(c.ritmo) + ' · último: hace ' + c.dias + ' días', ritmoChip(c))).join('') : '<p class="small muted" style="padding:8px 0">Todos los clientes van a su ritmo.</p>') + '</div></div>' +
+    '<p class="tiny muted" style="margin:2px 0 4px">Clientes que tardan más de lo que suelen en volver: conviene escribirles.</p>' + (vigilar.length ? vigilar.slice(0, 6).map(c => rowLink('ficha/' + c.id, esc(c.nombre), 'Suele: ' + ritmoTxt(c.ritmo) + ' · último: hace ' + c.dias + ' días', ritmoChip(c))).join('') : '<p class="small muted" style="padding:8px 0">Todos los clientes van a su ritmo.</p>') + '</div></div>' +
     '<div class="card"><div class="row between"><h2>' + icon('file', 's') + ' Presupuestos abiertos</h2><span class="small muted">' + quotes.length + '</span></div><div class="list">' +
-    (quotes.length ? quotes.slice(0, 6).map(p => rowLink(p.cliente ? 'ficha/' + p.cliente : 'contacto/' + p.contacto, esc(p.datos && p.datos.nombre), esc(p.numero) + ' · ' + C.d(p.fecha), '<b class="small">' + C.eur0(p.total) + '</b>')).join('') : '<p class="small muted" style="padding:8px 0">No hay presupuestos pendientes de respuesta.</p>') + '</div></div>' +
+    (quotes.length ? quotes.slice(0, 8).map(p => '<div class="li" data-qt="' + esc(p.id) + '" style="cursor:pointer;display:flex;gap:8px;align-items:center"><div class="grow"><b>' + esc(p.datos && p.datos.nombre) + '</b><div class="small muted">' + esc(p.numero) + ' · ' + C.d(p.fecha) + ' · hace ' + Math.max(0, -C.days(String(p.fecha).slice(0, 10))) + ' días</div></div><b class="small">' + C.eur0(p.total) + '</b>' + icon('chev', 's') + '</div>').join('') + '<p class="tiny muted" style="padding-top:6px">Toca uno para marcarlo aceptado o rechazado. Se cierran solos cuando haces el servicio o la factura de ese cliente. Los que no tengan respuesta, márcalos tú.</p>' : '<p class="small muted" style="padding:8px 0">No hay presupuestos pendientes de respuesta.</p>') + '</div></div>' +
     '<div class="card"><div class="row between"><h2>' + icon('euro', 's') + ' Cobros y anticipos</h2><a class="link small" href="#/facturas">Facturas</a></div><div class="list">' +
     antic.map(f => '<div class="li" data-fac="' + esc(f.id) + '" style="cursor:pointer"><div class="grow"><b>' + esc(f.datos && f.datos.nombre) + '</b><div class="small muted">Resto por facturar · anticipo ' + esc(f.numero) + '</div></div><span class="chip warn">' + C.eur(C.porFacturar(f)) + '</span></div>').join('') +
     (nPend ? fs.filter(f => C.pendiente(f) > 0.01).slice(0, 6).map(f => '<div class="li" data-fac="' + esc(f.id) + '" style="cursor:pointer"><div class="grow"><b>' + esc(f.numero) + ' · ' + esc(f.datos && f.datos.nombre) + '</b><div class="small muted">Por cobrar · ' + C.d(f.fecha) + '</div></div><b class="small">' + C.eur(C.pendiente(f)) + '</b></div>').join('') : (antic.length ? '' : '<p class="small muted" style="padding:8px 0">Todo cobrado y facturado.</p>')) + '</div></div>' +
@@ -2353,6 +2360,11 @@ VIEWS.panel = function () {
   return { title: 'Panel', html: html, mount: el => {
     $$('[data-py]', el).forEach(b => b.onclick = () => { S.ui.panY = b.dataset.py; render(); });
     $$('[data-fac]', el).forEach(r => r.onclick = () => invoiceSheet(S.crm.facturas.find(f => f.id === r.dataset.fac)));
+    $$('[data-qt]', el).forEach(r => r.onclick = () => { const p = quotes.find(x => x.id === r.dataset.qt); if (!p) return;
+      sheet('Presupuesto ' + p.numero, '<p style="margin-top:0"><b>' + esc(p.datos && p.datos.nombre) + '</b> · ' + C.eur(p.total) + '<br><span class="small muted">Enviado el ' + C.d(p.fecha) + '</span></p><p class="small muted">¿Qué ha pasado con él?</p><div class="actions" style="flex-wrap:wrap;gap:8px"><button class="btn green" data-qs="Aceptado">' + icon('check', 's') + 'Aceptado</button><button class="btn danger" data-qs="Rechazado">' + icon('x', 's') + 'Rechazado</button><button class="btn ghost" id="qopen">Abrir ' + (p.cliente ? 'ficha' : 'contacto') + '</button></div>', (sh, close) => {
+        $$('[data-qs]', sh).forEach(b => b.onclick = async () => { if (await command(async () => { await api('quoteState', { id: p.id, estado: b.dataset.qs }); await loadCrm(true); }, 'Presupuesto ' + b.dataset.qs.toLowerCase())) { close(); render(); } });
+        $('#qopen', sh).onclick = () => { close(); go(p.cliente ? 'ficha/' + p.cliente : 'contacto/' + p.contacto); };
+      }); });
     const pb = $('#prof', el); if (pb) pb.onclick = profileSheet;
   } };
 };
@@ -2437,7 +2449,7 @@ VIEWS.contacto = function (r) {
   if (!S.crm) return crmWait('Prospecto');
   const c = C.contact(r.id);
   if (!c) return { title: 'Prospecto', back: true, html: empty('target', 'No encontrado', 'Puede que se haya convertido en cliente.') };
-  if (c.cliente) { setTimeout(() => go('ficha/' + c.cliente)); return { title: 'Cliente', back: true, html: '' }; }
+  if (c.cliente) { setTimeout(() => location.replace('#/ficha/' + c.cliente)); return { title: 'Cliente', back: true, html: '' }; }
   const quotes = (S.crm.presupuestos || []).filter(p => p.contacto === c.id);
   if (!S.sols) loadSols();
   const csols = (S.sols || []).filter(x => x.contacto === c.id);
@@ -2515,11 +2527,23 @@ VIEWS.clientes = function () {
     .map(c => Object.assign({}, c, { fac: fs.filter(f => f.cliente === c.id && String(f.fecha).slice(0, 4) === ano).reduce((n, f) => n + C.num(f.imponible), 0), pend: fs.filter(f => f.cliente === c.id).reduce((n, f) => n + C.pendiente(f), 0) }))
     .sort((a, b) => b.fac - a.fac || a.nombre.localeCompare(b.nombre, 'es'));
   const html = '<div class="row" style="gap:8px"><div class="search grow"><input class="in" id="clq" placeholder="Buscar cliente" value="' + esc(S.ui.clQ || '') + '"></div><button class="btn green" id="clnew">' + icon('plus') + '<span class="hide-s">Cliente</span></button></div>' +
-    '<div class="card list" style="padding:2px 14px;margin-top:10px">' + cs.map(c => rowLink('ficha/' + c.id, esc(c.nombre), (c.ultimo ? 'Último servicio ' + C.dShort(c.ultimo) + ' · ' + ritmoTxt(c.ritmo) : 'Sin servicios en la app') + ' · ' + C.eur0(c.fac) + ' en ' + ano + (c.pend > 0.01 ? ' · <span style="color:var(--warn)">pendiente ' + C.eur0(c.pend) + '</span>' : ''), ritmoChip(c))).join('') + '</div>' +
+    (() => {
+      const row = c => rowLink('ficha/' + c.id, esc(c.nombre), (c.ultimo ? 'Último servicio ' + C.dShort(c.ultimo) + ' · ' + ritmoTxt(c.ritmo) : 'Sin servicios en la app') + ' · ' + C.eur0(c.fac) + ' en ' + ano + (c.pend > 0.01 ? ' · <span style="color:var(--warn)">pendiente ' + C.eur0(c.pend) + '</span>' : ''), ritmoChip(c));
+      const isCol = c => c.colab && c.colab.activo, solo = c => isCol(c) && c.colab.solo;
+      const grupos = [['part', 'Particulares', 'user', cs.filter(c => c.tipo !== 'empresa' && !solo(c))], ['emp', 'Empresas', 'building', cs.filter(c => c.tipo === 'empresa' && !solo(c))], ['col', 'Colaboradores', 'users', cs.filter(isCol)]];
+      const prosp = C.activos().length;
+      return '<div class="kpis k4" style="margin-top:10px">' + grupos.map(g => '<div class="kpi"><small>' + g[1] + '</small><b>' + g[3].length + '</b></div>').join('') + '<div class="kpi"><small>Prospectos</small><b>' + prosp + '</b></div></div>' +
+        grupos.map(g => '<details class="card" style="margin-top:10px;padding:10px 14px"' + (S.ui['cl_' + g[0]] || q ? ' open' : '') + ' data-cl="' + g[0] + '"><summary class="row" style="gap:8px;cursor:pointer;list-style:none"><span class="ic">' + icon(g[2]) + '</span><b class="grow">' + g[1] + '</b><span class="chip">' + g[3].length + '</span>' + icon('chev', 's') + '</summary><div class="list" style="margin-top:6px">' + (g[3].length ? g[3].map(row).join('') : '<p class="small muted">' + (g[0] === 'col' ? 'Aún no hay colaboradores. Crea uno con el botón de abajo o desde la ficha de un cliente («Hacer colaborador»).' : 'Ninguno.') + '</p>') + (g[0] === 'col' ? '<button class="btn sm soft" id="colnew" style="margin-top:8px">' + icon('plus', 's') + 'Colaborador (solo colabora, p. ej. un taller)</button>' : '') + '</div></details>').join('') +
+        '<a class="card row" href="#/comercial" style="margin-top:10px;padding:12px 14px;gap:8px;text-decoration:none;color:inherit"><span class="ic">' + icon('tasks') + '</span><b class="grow">Prospectos</b><span class="chip">' + prosp + '</span><span class="small muted">En Comercial</span>' + icon('chev', 's') + '</a>';
+    })() +
     '<p class="tiny muted" style="margin-top:8px">Un cliente es quien ya ha hecho algún servicio. Los que aún no, están en Comercial. El ritmo se calcula solo con sus servicios, y puedes fijarlo a mano en su ficha.</p>';
   return { title: 'Clientes', html: html, mount: el => {
     const qi = $('#clq', el); qi.oninput = () => { S.ui.clQ = qi.value; clearTimeout(qi._t); qi._t = setTimeout(() => { render(); const n = $('#clq'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
     $('#clnew', el).onclick = () => editClient(null);
+    $$('[data-cl]', el).forEach(d => d.ontoggle = () => { S.ui['cl_' + d.dataset.cl] = d.open; });
+    const cn = $('#colnew', el); if (cn) cn.onclick = () => sheet('Nuevo colaborador', '<p class="small muted" style="margin-top:0">Para quien solo te trae clientes (un taller, un camping…). Si ya es cliente, hazlo desde su ficha.</p><label class="f">Nombre o empresa</label><input class="in" id="nn"><label class="f">Teléfono</label><input class="in" id="nt" inputmode="tel"><label class="f">Correo</label><input class="in" id="ne" type="email"><label class="f">Comisión (%)</label><input class="in" id="np" inputmode="decimal" value="10"><div class="actions"><button class="btn" id="nok">Crear</button></div>', (sh, close) => {
+      $('#nok', sh).onclick = async () => { if (!$('#nn', sh).value.trim()) return toast('Indica el nombre.', true); let r; if (await command(async () => { r = await api('colabSave', { nuevo: true, nombre: $('#nn', sh).value, telefono: $('#nt', sh).value, email: $('#ne', sh).value, pct: $('#np', sh).value, solo: true }); await loadCrm(true); }, 'Colaborador creado')) { close(); go('ficha/' + r.id); } };
+    });
   } };
 };
 VIEWS.ficha = function (r) {
@@ -2540,18 +2564,28 @@ VIEWS.ficha = function (r) {
     '<div style="margin-top:10px">' + telLinks(c.telefono, c.email) + '</div>' + (c.tipo === 'particular' ? '<button class="btn sm ghost" id="fprev" style="margin-top:8px">' + icon('eye', 's') + 'Ver como este cliente</button>' : '') + '</div>' +
     '<div class="kpis k4" style="margin-top:10px"><div class="kpi"><small>Facturado ' + ano + '</small><b>' + C.eur0(facAno) + '</b></div><div class="kpi ' + (pend > 0.01 ? 'alert' : '') + '"><small>Pendiente</small><b>' + C.eur0(pend) + '</b></div><div class="kpi"><small>Servicios 90 días</small><b>' + (c.n90 || 0) + '</b></div><div class="kpi"><small>Ritmo</small><b style="font-size:15px">' + ritmoTxt(c.ritmo) + '</b><small class="tiny muted">' + (c.dias != null ? 'último hace ' + c.dias + ' d' : 'sin servicios') + '</small></div></div>' +
     fs.filter(f => C.porFacturar(f) > 0.01).map(f => '<div class="banner warn" style="margin-top:10px">' + icon('euro') + '<span class="grow">Falta facturar el resto del anticipo ' + esc(f.numero) + ': <b>' + C.eur(C.porFacturar(f)) + '</b></span><button class="btn sm" data-fin="' + esc(f.id) + '">Factura final</button></div>').join('') +
-    '<div class="card" style="margin-top:10px"><div class="row between"><h2>Seguimiento</h2>' + (crm.proxFecha ? whenChip(crm.proxFecha) : '') + '</div><p style="margin-top:6px">' + esc(crm.proxAccion || (c.estado === 'Se enfría' ? 'Lleva más tiempo del habitual sin servicios: conviene preguntar qué tal.' : 'Sin acción pendiente')) + '</p>' +
+    '<div class="card" style="margin-top:10px"><div class="row between"><h2>Seguimiento</h2>' + (crm.proxFecha ? whenChip(crm.proxFecha) : '') + '</div>' + (crm.proxAccion ? '<button class="li" id="fseg" style="width:100%;background:var(--bg);border:0;border-radius:10px;padding:10px;margin-top:6px;text-align:left;cursor:pointer;display:flex;gap:8px;align-items:center"><span class="grow">' + esc(crm.proxAccion) + '</span><span class="small muted">Gestionar</span>' + icon('chev', 's') + '</button>' : '<p style="margin-top:6px">' + esc(c.estado === 'Se enfría' ? 'Lleva más tiempo del habitual sin servicios: conviene preguntar qué tal.' : 'Sin acción pendiente') + '</p>') +
     '<button class="btn sm green" id="fnote" style="margin-top:10px">' + icon('plus', 's') + 'Registrar contacto</button></div>' +
+    colabCard(c) +
     '<div class="card"><div class="row between"><h2>Vehículos</h2><button class="btn sm ghost" id="fveh">' + icon('plus', 's') + 'Añadir</button></div><div id="fvehl"><p class="small muted">Cargando…</p></div></div>' +
     (fsols.length ? '<div class="card"><h2>Solicitudes desde la app</h2><div class="list">' + fsols.map(x => rowLink('solicitud/' + x.id, esc(x.numero + ' · ' + x.resumen), esc(money(x.total) + (x.dia ? ' · día ' + fDate(x.dia + 'T12:00:00Z') : '')), solChip(x.estado))).join('') + '</div></div>' : '') +
     '<div class="card"><div class="row between"><h2>Facturas</h2><button class="btn sm ghost" id="finv">' + icon('plus', 's') + 'Crear factura</button></div><div class="list">' + (fs.length ? fs.slice(0, 12).map(facRow).join('') : '<p class="small muted" style="padding:6px 0">Sin facturas.</p>') + '</div></div>' +
     '<div class="card"><div class="row between"><h2>Presupuestos</h2><button class="btn sm ghost" id="fq">' + icon('plus', 's') + 'Nuevo</button></div><div class="list">' + (quotes.length ? quotes.map(quoteRow).join('') : '<p class="small muted" style="padding:6px 0">Sin presupuestos.</p>') + '</div></div>' +
     '<div class="card"><h2>Historial</h2><div style="margin-top:8px">' + timeline(crm.notas) + '</div></div>' +
-    '<div class="row" style="gap:8px;margin-top:12px"><button class="btn ghost grow" id="fdat">' + icon('edit') + 'Datos fiscales y tarifas</button>' + (op ? '<button class="btn ghost grow" id="fop">' + icon('sliders') + 'Ajustes de operación</button>' : '') + '</div>';
+    '<div class="row" style="gap:8px;margin-top:12px"><button class="btn ghost grow" id="fdat">' + icon('edit') + 'Datos fiscales y tarifas</button>' + (op ? '<button class="btn ghost grow" id="fop">' + icon('sliders') + 'Ajustes de operación</button>' : '') + '</div>' +
+    '<button class="btn danger wide" id="fdel" style="margin-top:10px">' + icon('trash', 's') + 'Eliminar cliente</button><p class="tiny muted" style="margin-top:4px">Solo para fichas de prueba o duplicadas. Si tiene facturas no se puede borrar; si tiene servicios, se desactiva.</p>';
   return { title: 'Cliente', back: true, html: html, mount: el => {
     const vehDraw = async () => { try { const l = await api('vehList', { cliente: c.id }); const b = $('#fvehl', el); if (b) b.innerHTML = l.length ? l.map(v => '<div class="li" style="display:flex;align-items:center;gap:8px"><div class="grow"><b>' + esc(v.matricula || 'Sin matrícula') + '</b><div class="small muted">' + esc([v.tipo, v.modelo].filter(Boolean).join(' · ')) + '</div></div><button class="iconbtn" data-ved="' + esc(v.id) + '" data-m="' + esc(v.matricula) + '" aria-label="Editar matrícula">' + icon('edit', 's') + '</button></div>').join('') : '<p class="small muted">Sin vehículos guardados.</p>'; $$('[data-ved]', el).forEach(x => x.onclick = async () => { const m = await promptSheet('Matrícula', 'Matrícula del vehículo', { placeholder: x.dataset.m || '1234 ABC', ok: 'Guardar' }); if (m === null) return; if (await command(() => api('vehSave', { id: x.dataset.ved, matricula: m }), 'Guardado')) vehDraw(); }); } catch (e) {} };
     vehDraw();
     $('#fveh', el).onclick = () => sheet('Añadir vehículo', '<label class="f" style="margin-top:0">Tipo</label><select class="in" id="vt">' + ['Mini camper', 'Camper mediana', 'Gran camper', 'Caravana pequeña', 'Caravana grande', 'Autocaravana perfilada', 'Autocaravana capuchina', 'Autocaravana integral', 'Turismo pequeño', 'Turismo mediano', 'Turismo grande / SUV', 'Furgoneta', 'Otro'].map(x => '<option>' + x + '</option>').join('') + '</select><label class="f">Marca y modelo</label><input class="in" id="vm"><label class="f">Matrícula</label><input class="in plate" id="vp"><div class="actions"><button class="btn" id="vgo">Guardar</button></div>', (sh, close) => { $('#vgo', sh).onclick = async () => { if (await command(() => api('vehSave', { cliente: c.id, tipo: $('#vt', sh).value, modelo: $('#vm', sh).value, matricula: $('#vp', sh).value }), 'Vehículo añadido')) { close(); vehDraw(); } }; });
+    const fsg = $('#fseg', el); if (fsg) fsg.onclick = () => sheet('Seguimiento', '<p>' + esc(crm.proxAccion) + (crm.proxFecha ? ' · ' + esc(fDate(crm.proxFecha + 'T12:00:00Z')) : '') + '</p><label class="f">Cambiar acción</label><input class="in" id="sga" value="' + esc(crm.proxAccion) + '"><label class="f">Fecha</label><input class="in" type="date" id="sgf" value="' + esc(crm.proxFecha || '') + '"><div class="actions" style="flex-wrap:wrap;gap:8px"><button class="btn green" id="sgok">' + icon('check', 's') + 'Hecho</button><button class="btn" id="sgsv">Guardar cambios</button><button class="btn danger" id="sgdel">' + icon('trash', 's') + 'Eliminar</button></div>', (sh, close) => {
+      const go2 = async (body, msg) => { if (await command(async () => { await api('clientCrm', Object.assign({ id: c.id }, body)); await loadCrm(true); }, msg)) { close(); render(); } };
+      $('#sgok', sh).onclick = () => go2({ proxFecha: '', proxAccion: '', nota: 'Hecho: ' + crm.proxAccion }, 'Seguimiento hecho');
+      $('#sgsv', sh).onclick = () => go2({ proxFecha: $('#sgf', sh).value, proxAccion: $('#sga', sh).value }, 'Seguimiento actualizado');
+      $('#sgdel', sh).onclick = () => go2({ proxFecha: '', proxAccion: '' }, 'Seguimiento eliminado');
+    });
+    $('#fdel', el).onclick = async () => { if (!(await confirmSheet('Eliminar ' + c.nombre, 'Solo para fichas de prueba o duplicadas. No se puede deshacer.', 'Eliminar', true))) return; let r; if (await command(async () => { r = await api('clientDelete', { id: c.id }); await loadCrm(true); await sync(true); }, '')) { toast(r.borrado ? 'Cliente eliminado' : 'Tenía servicios: lo he desactivado'); go('clientes'); } };
+    mountColab(el, c);
     const fpv = $('#fprev', el); if (fpv) fpv.onclick = async () => { const w = window.open('', '_blank'); try { const r = await api('clientPreview', { cliente: c.id }); if (w) w.location = r.url; else location.href = r.url; } catch (e) { if (w) w.close(); toast(e.message, true); } };
     $('#fnote', el).onclick = () => noteSheet('Registrar contacto', body => api('clientCrm', { id: c.id, nota: body.texto, canal: body.canal, proxAccion: body.proxAccion, proxFecha: body.proxFecha }), true, crm);
     $('#finv', el).onclick = () => invoiceEditor(null, c.id);
@@ -3115,7 +3149,8 @@ async function loadAtender() {
     ].filter(b => (A[b[0]] || []).length);
     box.innerHTML = '<div class="card" style="margin-top:10px"><div class="row between"><h2>Para atender hoy</h2><span class="small muted">' + (blocks.length ? '' : 'Todo al día ✓') + '</span></div>' +
       '<input class="in" id="gsearch" placeholder="Buscar persona: nombre, teléfono o matrícula" autocomplete="off" style="margin-top:8px"><div id="gres"></div>' +
-      blocks.map(b => '<div style="margin-top:10px"><div class="row" style="gap:6px"><span class="chip ' + b[2] + '">' + A[b[0]].length + '</span><b class="small">' + esc(b[1]) + '</b></div>' + A[b[0]].slice(0, 5).map(x => '<a class="li" href="#/' + esc(b[3](x)) + '" style="padding:8px 0;display:flex;align-items:center;gap:8px;text-decoration:none;color:inherit"><div class="grow small">' + esc(b[4](x)) + '</div>' + (b[0] === 'sinSolicitud' && x.telefono ? '<span class="btn sm soft" data-wa="' + esc(x.telefono) + '" data-n="' + esc(String(x.nombre).split(' ')[0]) + '">WhatsApp</span>' : '') + icon('chev', 's') + '</a>').join('') + '</div>').join('') + '</div>';
+      blocks.map(b => '<details style="margin-top:10px"' + (S.ui['at_' + b[0]] ? ' open' : '') + ' data-at="' + b[0] + '"><summary class="row" style="gap:6px;cursor:pointer;list-style:none"><span class="chip ' + b[2] + '">' + A[b[0]].length + '</span><b class="small grow">' + esc(b[1]) + '</b>' + icon('chev', 's') + '</summary>' + A[b[0]].slice(0, 30).map(x => '<a class="li" href="#/' + esc(b[3](x)) + '" style="padding:8px 0;display:flex;align-items:center;gap:8px;text-decoration:none;color:inherit"><div class="grow small">' + esc(b[4](x)) + '</div>' + (b[0] === 'sinSolicitud' && x.telefono ? '<span class="btn sm soft" data-wa="' + esc(x.telefono) + '" data-n="' + esc(String(x.nombre).split(' ')[0]) + '">WhatsApp</span>' : '') + icon('chev', 's') + '</a>').join('') + '</details>').join('') + '</div>';
+    $$('[data-at]', box).forEach(d => d.ontoggle = () => { S.ui['at_' + d.dataset.at] = d.open; });
     $$('[data-wa]', box).forEach(b => b.onclick = e => { e.preventDefault(); e.stopPropagation(); const t = String(b.dataset.wa).replace(/\D/g, ''); window.open('https://wa.me/' + (t.length === 9 ? '34' + t : t) + '?text=' + encodeURIComponent('Hola, ' + b.dataset.n + ' 😊 Soy Enrique, de Efecto Mariposa. Vi que creaste tu cuenta: ¿te ayudo a pedir tu presupuesto? Si tienes cualquier duda, dime y lo vemos.'), '_blank'); });
     const q = $('#gsearch', box);
     q.oninput = () => {
@@ -3256,6 +3291,55 @@ VIEWS.monedero = function () {
     $$('[data-wx]', el).forEach(b => b.onclick = async () => { if (await confirmSheet('Desactivar', 'Deja de verse en el área del cliente.', 'Desactivar', true) && await command(() => api('walletSave', { id: b.dataset.wx, activo: false }), 'Desactivado')) reload(); });
   } };
 };
+
+
+/* ------------------------------------------------------------------ */
+/* Colaboradores (dirección)                                           */
+/* ------------------------------------------------------------------ */
+function colabsList() { return ((S.crm && S.crm.clientes) || []).filter(x => x.colab && x.colab.activo); }
+function colabCard(c) {
+  const k = c.colab && c.colab.activo ? c.colab : null;
+  const colabs = colabsList().filter(x => x.id !== c.id);
+  const traido = c.colaborador ? (colabsList().find(x => x.id === c.colaborador) || {}).nombre : '';
+  const trae = k && k.solo ? '' : '<div class="row between" style="margin-top:' + (k ? '12px' : '6px') + '"><span class="small">Lo trajo: <b>' + esc(traido || 'nadie') + '</b>' + (traido && c.colabDesde ? ' · desde ' + esc(fDate(c.colabDesde + 'T12:00:00Z')) : '') + '</span>' + (colabs.length ? '<button class="btn sm ghost" id="ftrae">' + (traido ? 'Cambiar' : 'Asociar') + '</button>' : '') + '</div>';
+  if (!k) return '<div class="card"><div class="row between"><h2>Colaboración</h2><button class="btn sm soft" id="fcol">' + icon('users', 's') + 'Hacer colaborador</button></div>' + trae + '</div>';
+  return '<div class="card" style="border:2px solid var(--gold,#ac812e)"><div class="row between"><h2>Colaborador · ' + esc(k.pct) + ' %</h2><button class="btn sm ghost" id="fcol">' + icon('edit', 's') + 'Acuerdo</button></div>' +
+    '<p class="small muted" style="margin-top:4px">Comisión del ' + esc(k.pct) + ' % sobre la base cobrada de cada cliente que trae, durante sus primeros 12 meses. Código <b>' + esc(k.codigo) + '</b>.</p>' +
+    '<div id="colBody"><p class="small muted">Cargando…</p></div>' + trae + '</div>';
+}
+function mountColab(el, c) {
+  const k = c.colab && c.colab.activo ? c.colab : null;
+  const edit = () => {
+    const st = { pct: k ? k.pct : 10, objetivos: (k && k.objetivos ? k.objetivos : []).map(o => Object.assign({}, o)) };
+    const rows = () => st.objetivos.map((o, i) => '<div class="card" style="padding:10px;margin-top:8px"><div class="row" style="gap:6px"><input class="in grow" data-o="titulo" data-i="' + i + '" placeholder="Nombre (p. ej. Primer trimestre)" value="' + esc(o.titulo || '') + '"><button class="iconbtn" data-od="' + i + '">' + icon('x', 's') + '</button></div><div class="grid2"><div><label class="f">Desde</label><input class="in" type="date" data-o="desde" data-i="' + i + '" value="' + esc(o.desde || '') + '"></div><div><label class="f">Hasta</label><input class="in" type="date" data-o="hasta" data-i="' + i + '" value="' + esc(o.hasta || '') + '"></div><div><label class="f">Clientes</label><input class="in" type="number" min="0" data-o="clientes" data-i="' + i + '" value="' + esc(o.clientes || '') + '"></div><div><label class="f">Facturación (€ sin IVA)</label><input class="in" inputmode="decimal" data-o="facturacion" data-i="' + i + '" value="' + esc(o.facturacion || '') + '"></div></div><label class="f">Premio al conseguirlo</label><input class="in" data-o="premio" data-i="' + i + '" placeholder="+2 % de comisión" value="' + esc(o.premio || '') + '"></div>').join('');
+    sheet(k ? 'Acuerdo de colaboración' : 'Hacer colaborador', '<label class="f" style="margin-top:0">Comisión (% sobre la base cobrada, 12 meses por cliente)</label><input class="in" id="cpct" inputmode="decimal" value="' + esc(String(st.pct).replace('.', ',')) + '"><div class="row between" style="margin-top:12px"><b>Objetivos</b><button class="btn sm ghost" id="oadd">' + icon('plus', 's') + 'Añadir</button></div><div id="olist">' + rows() + '</div>' + (k ? '<label class="check" style="margin-top:10px"><input type="checkbox" id="coff"> Dejar de ser colaborador</label>' : '') + '<div class="actions"><button class="btn" id="csave">Guardar</button></div>', (sh, close) => {
+      const keep = () => $$('[data-o]', sh).forEach(i => { st.objetivos[i.dataset.i][i.dataset.o] = i.value; });
+      const bind = () => { $$('[data-od]', sh).forEach(b => b.onclick = () => { keep(); st.objetivos.splice(Number(b.dataset.od), 1); $('#olist', sh).innerHTML = rows(); bind(); }); };
+      bind();
+      $('#oadd', sh).onclick = () => { keep(); st.objetivos.push({ titulo: '', desde: madridDay(), hasta: '', clientes: '', facturacion: '', premio: '' }); $('#olist', sh).innerHTML = rows(); bind(); };
+      $('#csave', sh).onclick = async () => { keep(); if (await command(async () => { await api('colabSave', { id: c.id, pct: $('#cpct', sh).value, objetivos: st.objetivos, activo: !($('#coff', sh) && $('#coff', sh).checked) }); await loadCrm(true); }, 'Acuerdo guardado')) { close(); render(); } };
+    });
+  };
+  const fc = $('#fcol', el); if (fc) fc.onclick = edit;
+  const ft = $('#ftrae', el); if (ft) ft.onclick = () => sheet('¿Quién lo trajo?', '<select class="in" id="tsel"><option value="">Nadie</option>' + colabsList().filter(x => x.id !== c.id).map(x => '<option value="' + esc(x.id) + '"' + (x.id === c.colaborador ? ' selected' : '') + '>' + esc(x.nombre) + '</option>').join('') + '</select><label class="f">Desde (cuenta los 12 meses de comisión)</label><input class="in" type="date" id="tdes" value="' + esc(c.colabDesde || madridDay()) + '"><div class="actions"><button class="btn" id="tok">Guardar</button></div>', (sh, close) => {
+    $('#tok', sh).onclick = async () => { if (await command(async () => { await api('clientColab', { id: c.id, colaborador: $('#tsel', sh).value, desde: $('#tdes', sh).value }); await loadCrm(true); }, 'Guardado')) { close(); render(); } };
+  });
+  if (!k) return;
+  (async () => {
+    let x; try { x = await api('colabInfo', { id: c.id }); } catch (e) { return; }
+    const b = $('#colBody', el); if (!b) return;
+    const qr = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=' + encodeURIComponent(x.enlace);
+    b.innerHTML = '<div class="kpis k4" style="margin-top:8px"><div class="kpi"><small>Clientes traídos</small><b>' + x.clientes.length + '</b></div><div class="kpi ' + (x.pendiente > 0 ? 'alert' : '') + '"><small>Pendiente de pagar</small><b>' + money(x.pendiente) + '</b></div><div class="kpi"><small>Comisiones ' + madridDay().slice(0, 4) + '</small><b>' + money(x.ano) + '</b></div><div class="kpi"><small>Pagado</small><b>' + money(x.pagado) + '</b></div></div>' +
+      '<div class="row" style="gap:10px;margin-top:10px;align-items:center"><img src="' + qr + '" alt="QR" style="width:92px;height:92px;border-radius:8px;border:1px solid var(--line)"><div class="grow"><div class="small ellipsis">' + esc(x.enlace) + '</div><div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap"><button class="btn sm soft" id="ccopy">' + icon('copy', 's') + 'Copiar enlace</button><a class="btn sm soft" href="' + qr + '" target="_blank" rel="noopener">' + icon('download', 's') + 'QR</a></div></div></div>' +
+      (x.objetivos.length ? x.objetivos.map(o => '<div style="margin-top:10px"><b class="small">' + esc(o.titulo || 'Objetivo') + '</b>' + (o.premio ? ' <span class="small muted">· ' + esc(o.premio) + '</span>' : '') + (o.clientes ? '<div class="tiny muted">Clientes ' + o.llevaClientes + ' de ' + o.clientes + '</div><div class="progress"><i style="width:' + Math.min(100, Math.round(100 * o.llevaClientes / o.clientes)) + '%"></i></div>' : '') + (o.facturacion ? '<div class="tiny muted">Facturación ' + money(o.llevaFacturacion) + ' de ' + money(o.facturacion) + '</div><div class="progress"><i style="width:' + Math.min(100, Math.round(100 * o.llevaFacturacion / o.facturacion)) + '%"></i></div>' : '') + '</div>').join('') : '') +
+      (x.clientes.length ? '<details style="margin-top:10px"><summary class="small"><b>Clientes que ha traído (' + x.clientes.length + ')</b></summary>' + x.clientes.map(y => rowLink('ficha/' + y.id, esc(y.nombre), 'Desde ' + esc(fDate(y.desde + 'T12:00:00Z')) + ' · ' + money(y.facturado) + ' sin IVA', '')).join('') + '</details>' : '') +
+      (x.comisiones.length ? '<details style="margin-top:6px"><summary class="small"><b>Comisiones (' + x.comisiones.length + ')</b></summary>' + x.comisiones.map(y => '<div class="li" style="display:flex;gap:8px"><div class="grow small">' + esc(fDate(y.fecha + 'T12:00:00Z') + ' · ' + y.numero + ' · ' + y.cliente) + '</div><b class="small">' + money(y.importe) + '</b><span class="chip ' + (y.estado === 'Liquidada' ? 'ok' : 'warn') + '">' + esc(y.estado) + '</span></div>').join('') + '</details>' : '') +
+      '<div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">' + (x.pendiente > 0 ? '<button class="btn sm green" id="cliq">' + icon('check', 's') + 'Liquidar ' + money(x.pendiente) + '</button>' : '') + '<button class="btn sm soft" id="cacc">' + icon('mail', 's') + (x.acceso ? 'Reenviar acceso' : 'Dar acceso a su área') + '</button></div>' + (x.acceso ? '<p class="tiny muted" style="margin-top:4px">Acceso: ' + esc(x.acceso) + '</p>' : '');
+    $('#ccopy', b).onclick = () => (navigator.clipboard ? navigator.clipboard.writeText(x.enlace) : Promise.reject()).then(() => toast('Enlace copiado'), () => promptSheet('Enlace', 'Cópialo', { placeholder: x.enlace }));
+    const lq = $('#cliq', b); if (lq) lq.onclick = async () => { if (!(await confirmSheet('Liquidar comisiones', 'Se marcan como pagadas ' + money(x.pendiente) + ', se guarda el PDF de la liquidación y le avisamos para que te envíe su factura.', 'Liquidar'))) return; let r; if (await command(async () => { r = await api('colabLiquidar', { id: c.id }, 90000); }, '')) { toast('Liquidación ' + r.ref + ' · ' + money(r.total)); render(); } };
+    $('#cacc', b).onclick = async () => { const e = await promptSheet('Acceso del colaborador', 'Correo con el que entrará', { placeholder: x.acceso || c.email || 'correo@ejemplo.com', ok: 'Enviar invitación' }); if (e === null) return; let r; if (await command(async () => { r = await api('invitar', { cliente: c.id, email: e || x.acceso || c.email }); await loadCrm(true); }, '')) { toast('Invitación enviada a ' + r.email); render(); } };
+  })();
+}
 
 window.addEventListener('online', () => { S.online = true; updateStatus(); flush(); if (!S.queue.length) sync(); });
 window.addEventListener('offline', () => { S.online = false; updateStatus(); });
