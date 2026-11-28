@@ -594,6 +594,15 @@ function solDoneCore_(cur, u) {
     cur.cliente = c ? (c.cliente || clientFromContact_(c, u)) : '';
   }
   cur.estado = 'Hecha'; cur.actualizado = iso_();
+  if (cur.bono && cur.bono.id && !cur.bono.usado) {
+    const m = read_('Monedero').find(x => x.id === cur.bono.id && x.tipo === 'bono');
+    if (m && Number(m.usadas) < Number(m.visitas)) {
+      m.usadas = Number(m.usadas || 0) + 1;
+      m.movs = (m.movs || []).concat([{ at: iso_(), k: cur.bono.k, texto: 'Visita ' + m.usadas + ' de ' + m.visitas + ' · ' + cur.bono.srv + ' (' + cur.numero + ')' }]);
+      update_('Monedero', m);
+      cur.bono = Object.assign({}, cur.bono, { usado: true });
+    }
+  }
   if (cur.vale && cur.vale.codigo && !cur.vale.usado) {
     const vm = valeFind_(cur.vale.codigo);
     const imp = vm ? r2_(Math.min(Number(vm.saldo), cur.vale.imp || 0)) : 0;
@@ -705,8 +714,82 @@ function linkOk_(s) { return !s.cerrado || Date.now() <= Date.parse(linkExpires_
 function walletOut_(m) {
   const tot = Number(m.total) || 0, pag = Number(m.pagado) || 0, rest = Math.max(1, (Number(m.visitas) || 0) - (Number(m.usadas) || 0));
   return { estado: m.tipo === 'regalo' ? valeEstado_(m) : bonoEstado_(m), total: tot, pagado: pag, ref: m.ref || '', matricula: m.matricula || '', comp: m.comp || null, porVisita: tot ? r2_(Math.max(0, tot - pag) / rest) : 0, usuario: m.usuario || '', id: m.id, tipo: m.tipo, nombre: m.nombre, codigo: m.tipo === 'regalo' ? m.codigo : '', visitas: Number(m.visitas) || 0, usadas: Number(m.usadas) || 0, saldo: Number(m.saldo) || 0, inicial: Number(m.inicial) || 0, caduca: dd_(m.caduca), para: m.para || '', de: m.de || '',
-    movs: (m.movs || []).slice(-10).map(x => ({ at: x.at, texto: x.texto, imp: x.imp || 0 })) };
+    movs: (m.movs || []).slice(-10).map(x => ({ at: x.at, texto: x.texto, imp: x.imp || 0 })),
+    lineas: m.tipo === 'bono' ? bonoLineas_(m) : [], matriculas: String(m.matricula || '').split(' / ').filter(Boolean) };
 }
+
+/* ------------------------------------------------------------------ */
+/* Usar el bono desde el área de cliente                               */
+/* ------------------------------------------------------------------ */
+const SOL_ABIERTA_ = s => ['Hecha', 'Rechazada', 'Cancelada'].indexOf(s.estado) < 0;
+/** Servicios del bono con lo que queda de cada uno (descontando las visitas ya pedidas y sin hacer). */
+function bonoLineas_(m, sols) {
+  const comp = m.comp && Array.isArray(m.comp.comp) ? m.comp.comp : null;
+  const coche = !!(m.comp && m.comp.tipo === 'coche');
+  const base = comp ? comp.map((c, k) => ({ k: k, srv: c.srv, n: Number(c.n) || 0, code: coche ? P_CSRV.indexOf(c.srv) : SRV_N.indexOf(c.srv) }))
+    : [{ k: 0, srv: 'Visita del bono', n: Number(m.visitas) || 0, code: -1 }];
+  sols = sols || read_('Solicitudes');
+  const pedidas = sols.filter(x => x.bono && x.bono.id === m.id && SOL_ABIERTA_(x) && !x.bono.usado);
+  const hechas = (m.movs || []).filter(x => x.k != null);
+  let libres = Math.max(0, (Number(m.visitas) || 0) - (Number(m.usadas) || 0) - pedidas.length);
+  return base.map(l => {
+    const usadas = hechas.filter(x => Number(x.k) === l.k).length, enCurso = pedidas.filter(x => Number(x.bono.k) === l.k).length;
+    const quedan = Math.max(0, Math.min(l.n - usadas - enCurso, libres));
+    return { k: l.k, srv: l.srv, n: l.n, usadas: usadas, enCurso: enCurso, quedan: quedan };
+  });
+}
+function cBonoUsar_(d, u, req) {
+  const a = csession_(req);
+  noPreview_(a);
+  throttle_('bonous:' + a.id, 6);
+  return locked_(() => {
+    const m = read_('Monedero').find(x => x.id === d.id && x.tipo === 'bono' && x.activo !== false && (x.cuenta === a.id || x.usuario === a.email));
+    if (!m) fail_('Bono no encontrado.');
+    const est = bonoEstado_(m);
+    if (est === 'Pendiente de pago') fail_('Tu bono se activa en cuanto recibamos el primer pago. Te avisamos por correo.');
+    if (est !== 'Activo') fail_('Este bono está ' + est.toLowerCase() + '.');
+    const sols = read_('Solicitudes');
+    const l = bonoLineas_(m, sols).find(x => x.k === Number(d.k));
+    if (!l) fail_('Elige qué servicio quieres.');
+    if (!(l.quedan > 0)) fail_('Ya no te quedan visitas de ese servicio.');
+    const w = [0, 1, 2].indexOf(Number(d.w)) >= 0 ? Number(d.w) : 2;
+    const mats = String(m.matricula || '').split(' / ').filter(Boolean);
+    const mat = mats.indexOf(String(d.matricula || '').toUpperCase()) >= 0 ? String(d.matricula).toUpperCase() : mats[0] || '';
+    const dia = dayOk_(d.dia) || '';
+    if (dia && dia < day_()) fail_('Elige una fecha a partir de hoy.');
+    const comp = m.comp || {}, coche = comp.tipo === 'coche';
+    const vIdx = coche ? P_CARS.findIndex(c => c[0] === comp.vehiculo) : P_NAMES.indexOf(comp.vehiculo);
+    const sel = coche ? { tipo: 'coche', v: Math.max(0, vIdx), s: Math.max(0, l.code), seats: 0, ex: [], w: w } : { tipo: 'auto', v: vIdx >= 0 ? vIdx : 5, a: Number(comp.antiguedad) || 0, st: 0, s: l.code >= 0 ? l.code : 1, ex: 0, seat: 0, bed: 0, xt: [], w: w };
+    const rest = Math.max(1, (Number(m.visitas) || 0) - (Number(m.usadas) || 0));
+    const cobro = m.total ? r2_(Math.max(0, Number(m.total) - Number(m.pagado || 0)) / rest) : 0;
+    const year = new Date().getFullYear();
+    let max = 0;
+    sols.forEach(x => { const q = String(x.numero || '').match(/^S(\d{4})-(\d+)$/); if (q && Number(q[1]) === year) max = Math.max(max, Number(q[2])); });
+    const numero = 'S' + year + '-' + ('00' + (max + 1)).slice(-3);
+    const cid = accClient_(a);
+    const veh = comp.vehiculo || 'Vehículo del bono';
+    const v = read_('Vehiculos').find(x => x.activo !== false && mat && String(x.matricula).toUpperCase() === mat && (x.cuenta === a.id || (cid && x.cliente === cid)));
+    const visita = (Number(m.usadas) || 0) + bonoLineas_(m, sols).reduce((t, x) => t + x.enCurso, 0) + 1;
+    const notas = clean_(d.notas, 600);
+    const resumen = 'Bono ' + m.ref + ' · ' + l.srv;
+    const lineas = [{ c: l.srv + ' · ' + veh + ' (bono ' + m.ref + ', visita ' + visita + ' de ' + m.visitas + ')', imp: 0 }].concat(cobro ? [{ c: 'Parte del bono que se paga en esta visita', imp: cobro }] : []);
+    const s = { id: uid_(), numero: numero, fecha: iso_(), cuenta: a.id, contacto: '', cliente: cid || '', nombre: a.nombre, telefono: a.telefono || '', email: a.email,
+      sel: sel, vehiculo: veh, resumen: resumen, lineas: lineas, manual: 0, descuento: null, total: cobro, estado: dia ? 'Aceptada' : 'Aceptada',
+      fotos: [], chat: [{ at: iso_(), de: 'sistema', texto: 'Visita pedida con el bono ' + m.ref + ': ' + l.srv + (dia ? ' · día preferido ' + dia.split('-').reverse().join('/') : '') + '.' }].concat(notas ? [{ at: iso_(), de: 'cliente', texto: notas }] : []),
+      dia: '', propuesto: dia, token: 't' + secret_(), revisado: iso_(), notas: '', carpeta: '', ofertas: false, evento: '', actualizado: iso_(), vale: null, procedencia: 'Bono ' + m.ref,
+      vehiculoId: v ? v.id : '', matricula: mat, servicio: '', bono: { id: m.id, ref: m.ref, k: l.k, srv: l.srv, cobro: cobro, usado: false } };
+    insert_('Solicitudes', s);
+    m.movs = (m.movs || []).concat([{ at: iso_(), texto: 'Visita pedida desde el área: ' + l.srv + ' (' + numero + ')' }]);
+    update_('Monedero', m);
+    if (cid) { const cl = read_('Clientes').find(x => x.id === cid); if (cl) { cl.crm = cl.crm || {}; cl.crm.proxFecha = day_(); cl.crm.proxAccion = 'Programar visita del bono ' + m.ref + ' (' + numero + ')'; update_('Clientes', cl); } }
+    const link = clientUrl_() + '#s=' + s.token;
+    pmail_(a.email, 'Visita de tu bono · ' + numero, 'Hemos recibido tu visita', ['Hola, ' + esc_(String(a.nombre).split(' ')[0]) + ':', 'Has pedido <b>' + esc_(l.srv) + '</b> con tu bono <b>' + esc_(m.ref) + '</b> para ' + esc_([veh, mat].filter(Boolean).join(' · ')) + '.', dia ? 'Nos dices que te viene bien el <b>' + dia.split('-').reverse().join('/') + '</b>. Te confirmamos el día enseguida.' : 'Te escribimos enseguida para cerrar el día.', cobro ? 'En esta visita se paga la parte del bono que corresponde: <b>' + eurP_(cobro) + '</b>.' : 'Esta visita ya está pagada con tu bono.'], 'Ver mi visita', link, 'Visita con bono');
+    pmail_(ownerMail_(), '🎟️ Visita con bono · ' + a.nombre + ' · ' + numero, 'Visita pedida con bono', ['<b>' + esc_(a.nombre) + '</b> (' + esc_(a.telefono || a.email) + ') pide <b>' + esc_(l.srv) + '</b> con el bono <b>' + esc_(m.ref) + '</b>.', esc_([veh, mat, P_PLACES[w]].filter(Boolean).join(' · ')), dia ? 'Día preferido: <b>' + dia.split('-').reverse().join('/') + '</b>' : 'Sin día preferido.', cobro ? 'A cobrar en la visita: <b>' + eurP_(cobro) + '</b> (parte pendiente del bono).' : 'Visita ya pagada.', notas ? 'Notas: ' + esc_(notas) : ''].filter(Boolean), 'Programarla', APP.appUrl + '#/solicitud/' + s.id, 'Visita con bono');
+    return { t: s.token, numero: numero };
+  });
+}
+Object.assign(PORTAL_OPEN, { cBonoUsar: 1 });
+Object.assign(PORTAL_ACTIONS, { cBonoUsar: cBonoUsar_ });
 function ofertasActivas_() {
   const hoy = day_();
   return read_('Ofertas').filter(o => o.activa !== false && (!o.hasta || dd_(o.hasta) >= hoy)).map(o => ({ id: o.id, titulo: o.titulo, texto: o.texto, pct: Number(o.pct) || 0, hasta: dd_(o.hasta) }));
@@ -963,7 +1046,7 @@ function walletUse_(d, u) {
       if (m.estado === 'Pendiente de pago') fail_('Este bono aún no está activo: falta registrar el primer pago.');
       if (Number(m.usadas) >= Number(m.visitas)) fail_('El bono ya no tiene visitas.');
       m.usadas = Number(m.usadas || 0) + 1;
-      m.movs = (m.movs || []).concat([{ at: iso_(), texto: 'Visita ' + m.usadas + ' de ' + m.visitas + (nota ? ' · ' + nota : '') }]);
+      m.movs = (m.movs || []).concat([Object.assign({ at: iso_(), texto: 'Visita ' + m.usadas + ' de ' + m.visitas + (d.k != null && m.comp && m.comp.comp && m.comp.comp[Number(d.k)] ? ' · ' + m.comp.comp[Number(d.k)].srv : '') + (nota ? ' · ' + nota : '') }, d.k != null && d.k !== '' ? { k: Number(d.k) } : {})]);
     } else {
       const imp = money_(d.importe);
       if (!(imp > 0) || imp > Number(m.saldo) + 0.001) fail_('Importe no válido (saldo ' + eurP_(Number(m.saldo)) + ').');

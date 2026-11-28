@@ -265,17 +265,19 @@ async function viewSol(t) {
   APP.innerHTML = top('Mi solicitud', 'Cargando…', S.token ? 'area' : '') + '<div class="spin"></div>';
   let s; try { s = await api('pView', { t: t }); } catch (e) { return viewError(e.message); }
   LS.set('ultima', t);
-  const idx = STEPS.findIndex(x => x[0] === s.estado), closed = ['Rechazada', 'Cancelada'].indexOf(s.estado) >= 0;
+  const esBono = /^Bono /.test(s.resumen || '');
+  const STP = esBono ? [['Recibida', 'Visita pedida con tu bono'], ['Presupuesto revisado', 'Sin presupuesto: va con tu bono'], ['Aceptada', 'Te confirmamos el día'], ['Programada', 'Te esperamos el día acordado'], ['Hecha', 'Se descuenta la visita de tu bono']] : STEPS;
+  const idx = STP.findIndex(x => x[0] === s.estado), closed = ['Rechazada', 'Cancelada'].indexOf(s.estado) >= 0;
   const chipCls = s.estado === 'Hecha' || s.estado === 'Programada' ? 'ok' : closed ? 'bad' : '';
-  const lines = s.lineas.map(l => '<div><span>' + esc(l.c) + '</span><b>' + (l.imp ? eur(l.imp) : 'Gratis') + '</b></div>').join('') +
+  const lines = s.lineas.map(l => '<div><span>' + esc(l.c) + '</span><b>' + (l.imp ? eur(l.imp) : esBono ? 'Incluido' : 'Gratis') + '</b></div>').join('') +
     (s.descuento ? '<div class="d"><span>' + esc(s.descuento.n) + ' (−' + s.descuento.pct + ' %)</span><b>−' + eur(s.descuento.imp) + '</b></div>' : '') +
     '<div class="small muted" style="border:0"><span>Base + IVA 21 %</span><span>' + eur(s.total / 1.21) + ' + ' + eur(s.total - s.total / 1.21) + '</span></div>' +
-    '<div class="tt"><span>Total</span><b>' + eur(s.total) + '</b></div>' +
+    '<div class="tt"><span>' + (esBono ? 'A pagar en la visita' : 'Total') + '</span><b>' + eur(s.total) + '</b></div>' +
     (s.vale && s.vale.imp ? '<div class="d" style="border:0;margin-top:6px"><span>🎁 Vale regalo ' + esc(s.vale.codigo) + '</span><b>−' + eur(s.vale.imp) + '</b></div><div style="border:0"><span><b>A pagar</b></span><b style="font-size:17px">' + eur(s.pagar) + '</b></div>' : '');
   let h = '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><b style="color:var(--navy)">' + esc(s.resumen) + '</b><div class="small muted">' + esc(s.vehiculo) + (s.matricula ? ' · ' + esc(s.matricula) : '') + ' · ' + esc(s.lugar) + '</div></div><span class="st ' + chipCls + '">' + esc(s.estado) + '</span></div>' +
-    (closed ? '' : '<div class="steps" style="margin-top:10px">' + STEPS.map((x, i) => '<div class="s ' + (i < idx || s.estado === 'Hecha' ? 'done' : i === idx ? 'now' : '') + '"><span class="k">' + (i < idx || s.estado === 'Hecha' ? '✓' : i + 1) + '</span><div><b>' + esc(x[0]) + '</b><span>' + esc(x[1]) + '</span></div></div>').join('') + '</div>') + '</div>';
-  h += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="color:var(--navy)">' + (s.revisado ? 'Presupuesto revisado' : 'Presupuesto calculado') + '</b><span class="small muted">' + esc(s.numero) + '</span></div><div class="lines">' + lines + '</div>' +
-    '<p class="small muted" style="margin-top:8px">' + (s.revisado ? 'Revisado por Enrique. El descuento no se acumula con otras ofertas.' : 'Pendiente de revisión: lo confirmamos al ver tus fotos.') + '</p></div>';
+    (closed ? '' : '<div class="steps" style="margin-top:10px">' + STP.map((x, i) => '<div class="s ' + (i < idx || s.estado === 'Hecha' ? 'done' : i === idx ? 'now' : '') + '"><span class="k">' + (i < idx || s.estado === 'Hecha' ? '✓' : i + 1) + '</span><div><b>' + esc(x[0]) + '</b><span>' + esc(x[1]) + '</span></div></div>').join('') + '</div>') + '</div>';
+  h += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="color:var(--navy)">' + (esBono ? 'Tu visita con bono' : s.revisado ? 'Presupuesto revisado' : 'Presupuesto calculado') + '</b><span class="small muted">' + esc(s.numero) + '</span></div><div class="lines">' + lines + '</div>' +
+    '<p class="small muted" style="margin-top:8px">' + (esBono ? (s.total ? 'El importe es la parte del bono que se paga en esta visita.' : 'Esta visita ya está pagada con tu bono.') : s.revisado ? 'Revisado por Enrique. El descuento no se acumula con otras ofertas.' : 'Pendiente de revisión: lo confirmamos al ver tus fotos.') + '</p></div>';
   if (!s.cuenta && s.bienvenida > 0 && !closed) h += '<div class="promo"><div class="badge">−10 %</div><h3>Crea tu cuenta y ahorra ' + eur(s.bienvenida) + '</h3><p>Ya tenemos tus datos: solo elige una contraseña. −10 % en tu primer servicio desde 150 €. No acumulable con otras ofertas.</p><input class="in" id="pw" type="password" autocomplete="new-password" placeholder="Contraseña (mín. 8 caracteres)"><label class="ck" style="color:#c9d6dc;margin-top:8px"><input type="checkbox" id="of"> <span>Quiero ofertas exclusivas por correo</span></label><button class="btn" id="reg" style="margin-top:8px">Crear mi cuenta</button></div>';
   if (s.estado === 'Presupuesto revisado') h += '<div class="card"><b style="color:var(--navy)">¿Te parece bien? Acéptalo y propón día</b><div class="grid2" style="margin-top:8px"><label class="f">Día<input class="in" type="date" id="dia" min="' + tomorrow() + '"></label><label class="f">Franja<select class="in" id="fr"><option>Mañana</option><option>Tarde</option><option>Me da igual</option></select></label></div><button class="btn" id="acc" style="margin-top:10px">Aceptar presupuesto</button></div>';
   if (s.estado === 'Aceptada') h += '<p class="note">Has propuesto el <b>' + fday(s.propuesto) + '</b>. Te confirmamos el día muy pronto.</p>';
@@ -329,6 +331,38 @@ function viewLogin(mode) {
     } catch (e) { busy(b, false); toast(e.message, true); }
   };
 }
+async function viewBonoUsar(id) {
+  if (!S.token) return go('entrar');
+  if (!S.me) { APP.innerHTML = '<div class="spin"></div>'; try { S.me = await api('cMe', {}); } catch (e) { return viewError(e.message); } }
+  const m = (S.me.monedero || []).find(x => x.id === id);
+  if (!m) return go('area');
+  const ls = (m.lineas || []).filter(l => l.quedan > 0);
+  const st = { k: ls.length === 1 ? ls[0].k : null, w: 2, mat: (m.matriculas || [])[0] || '' };
+  const fday2 = d => d ? d.split('-').reverse().join('/') : '';
+  const draw = () => {
+    APP.innerHTML = top('Usar mi bono', m.nombre + ' · ' + (m.ref || ''), 'area') + '<div class="pad">' +
+      '<div class="card"><b style="color:var(--navy)">¿Qué servicio quieres?</b>' + (m.lineas || []).map(l => '<button class="opt' + (st.k === l.k ? ' on' : '') + '" data-k="' + l.k + '"' + (l.quedan > 0 ? '' : ' disabled style="opacity:.45"') + '><span class="dot"></span><span class="t"><b>' + esc(l.srv) + '</b><span>Te quedan ' + l.quedan + ' de ' + l.n + '</span></span></button>').join('') + '</div>' +
+      ((m.matriculas || []).length > 1 ? '<div class="card"><b style="color:var(--navy)">¿Para qué vehículo?</b><div class="seg" style="margin-top:8px">' + m.matriculas.map(x => '<button data-mat="' + esc(x) + '" class="' + (st.mat === x ? 'on' : '') + '">' + esc(x) + '</button>').join('') + '</div></div>' : '') +
+      '<div class="card"><b style="color:var(--navy)">¿Dónde?</b><div class="seg" style="margin-top:8px;flex-wrap:wrap">' + [[2, 'San Martín de la Vega'], [0, 'Alcalá de Henares'], [1, 'A domicilio']].map(x => '<button data-w="' + x[0] + '" class="' + (st.w === x[0] ? 'on' : '') + '">' + x[1] + '</button>').join('') + '</div>' +
+      '<label class="f" style="margin-top:10px">¿Qué día te viene bien? (opcional)<input class="in" type="date" id="bud" min="' + tomorrow() + '" value="' + esc(st.dia || '') + '"></label>' +
+      '<label class="f" style="margin-top:8px">Algo que debamos saber (opcional)<textarea class="in" id="bun" rows="2">' + esc(st.notas || '') + '</textarea></label></div>' +
+      '<div class="lines"><div class="tt"><span>A pagar en esta visita</span><b>' + (m.porVisita ? eur(m.porVisita) : 'Nada, ya está pagada') + '</b></div></div>' +
+      (m.porVisita ? '<p class="small muted">Es la parte del bono que queda repartida entre las visitas.</p>' : '') +
+      '<button class="btn" id="bugo" style="margin-top:10px">Pedir la visita</button><p class="small muted center" style="margin-top:6px">Sin presupuesto: te confirmamos el día y listo. Matrícula ' + esc(st.mat || '—') + (m.caduca ? ' · bono válido hasta el ' + fday2(m.caduca) : '') + '.</p></div>';
+    const keep = () => { st.dia = $('#bud').value; st.notas = $('#bun').value; };
+    $$('[data-k]').forEach(b => b.onclick = () => { if (b.disabled) return; keep(); st.k = Number(b.dataset.k); draw(); });
+    $$('[data-mat]').forEach(b => b.onclick = () => { keep(); st.mat = b.dataset.mat; draw(); });
+    $$('[data-w]').forEach(b => b.onclick = () => { keep(); st.w = Number(b.dataset.w); draw(); });
+    $('#bugo').onclick = async () => {
+      keep();
+      if (st.k == null) return toast('Elige qué servicio quieres.', true);
+      const b = $('#bugo'); busy(b, true);
+      try { const r = await api('cBonoUsar', { id: m.id, k: st.k, w: st.w, matricula: st.mat, dia: st.dia, notas: st.notas }); S.me = null; toast('¡Visita pedida! Te confirmamos el día.'); go('s=' + r.t); }
+      catch (e) { busy(b, false); toast(e.message, true); }
+    };
+  };
+  draw();
+}
 function viewInvite(m) {
   APP.innerHTML = top('Crea tu contraseña', 'Área de clientes', '') + '<div class="pad"><div class="card" style="display:flex;flex-direction:column;gap:10px"><p class="small muted" style="margin:0">Te han dado acceso al área de clientes de Efecto Mariposa. Elige una contraseña (mínimo 8 caracteres) y entrarás siempre con tu correo y esa contraseña.</p>' +
     '<label class="f">Contraseña nueva<input class="in" type="password" id="ip" autocomplete="new-password"></label><label class="f">Repítela<input class="in" type="password" id="ip2" autocomplete="new-password"></label><button class="btn" id="igo">Guardar y entrar</button></div></div>';
@@ -377,10 +411,12 @@ async function viewArea(tab, cached) {
     const bonoCard = m => {
       const pend = m.estado === 'Pendiente de pago', off = m.estado === 'Gastado' || m.estado === 'Caducado' || m.estado === 'Anulado';
       const pctPag = m.total ? Math.min(100, Math.round(m.pagado / m.total * 100)) : 0;
-      return '<div class="wcard bono' + (off ? ' off' : '') + '"><div class="wtop"><span>BONO ' + esc(m.ref || '') + '</span><span class="wst">' + esc(m.estado) + '</span></div>' +
+      const usable = m.estado === 'Activo' && (m.lineas || []).some(l => l.quedan > 0);
+      return '<div class="wcard bono' + (off ? ' off' : '') + '"' + (usable && !S.preview ? ' data-bono="' + esc(m.id) + '" style="cursor:pointer"' : '') + '><div class="wtop"><span>BONO ' + esc(m.ref || '') + '</span><span class="wst">' + esc(m.estado) + '</span></div>' +
         '<div class="wname">' + esc(m.nombre) + ' · ' + m.visitas + ' visitas</div><div class="wsub">' + esc([m.comp && m.comp.vehiculo, m.matricula].filter(Boolean).join(' · ')) + (m.caduca ? ' · hasta el ' + fd(m.caduca) : '') + '</div>' +
         '<div class="wvis">' + Array.from({ length: m.visitas }, (_, i) => '<span class="' + (i < m.usadas ? 'on' : '') + '">' + (i < m.usadas ? '✓' : i + 1) + '</span>').join('') + '</div>' +
-        (m.comp ? '<div class="wsub">' + m.comp.comp.map(c => c.n + ' × ' + c.srv.toLowerCase()).join(' + ') + '</div>' : '') +
+        ((m.lineas || []).length ? '<div class="wsub">' + m.lineas.map(l => l.srv + ': quedan ' + l.quedan + ' de ' + l.n + (l.enCurso ? ' (' + l.enCurso + ' pedida' + (l.enCurso > 1 ? 's' : '') + ')' : '')).join('<br>') + '</div>' : (m.comp ? '<div class="wsub">' + m.comp.comp.map(c => c.n + ' × ' + c.srv.toLowerCase()).join(' + ') + '</div>' : '')) +
+        (usable && !S.preview ? '<div class="wuse">Usar el bono ›</div>' : '') +
         (m.total ? '<div class="wbar"><i style="width:' + pctPag + '%"></i></div><div class="wsub">Pagado ' + eur(m.pagado) + ' de ' + eur(m.total) + (!pend && m.pagado < m.total ? ' · ' + eur(m.porVisita) + ' en cada visita' : '') + '</div>' : '') +
         (pend && pi ? '<div class="wpay"><b>Para activarlo, paga ' + eur(m.total / 2) + '</b><br>Bizum: <b>' + esc(pi.bizum) + '</b>' + (pi.iban ? '<br>Transferencia: <b>' + esc(pi.iban) + '</b><br>' + esc(pi.titular) : '') + '<br>Concepto: <b>' + esc(m.ref) + '</b><button class="btn sm" data-paid="' + esc(m.id) + '" style="margin-top:8px;width:100%">Ya lo he pagado</button></div>' : '') + '</div>';
     };
@@ -424,6 +460,7 @@ async function viewArea(tab, cached) {
   $$('[data-bb]').forEach(b => b.onclick = () => { BQ.base = b.dataset.bb; redraw(); });
   $$('[data-bk]').forEach(b => b.onclick = () => { BQ.bono = b.dataset.bk; redraw(); });
   if ($('#bgo')) $('#bgo').onclick = async () => { const b = $('#bgo'); if (!$('#bok').checked) return toast('Acepta las condiciones del bono.', true); busy(b, true); try { await api('cBonoPedir', { tipo: BQ.tipo === 'coche' ? 'coche' : '', v: BQ.v, cv: BQ.cv, a: BQ.a, base: BQ.base, bono: BQ.bono, matricula: $('#bm').value, matricula2: ($('#bm2') || {}).value || '', acepto: true }); toast('¡Bono reservado! Te hemos enviado los datos de pago.'); S.me = null; window.scrollTo(0, 0); viewArea('monedero'); } catch (e) { busy(b, false); toast(e.message, true); } };
+  $$('[data-bono]').forEach(el => el.onclick = () => go('bono=' + el.dataset.bono));
   $$('[data-paid]').forEach(b => b.onclick = async () => { busy(b, true); try { await api('cBonoAviso', { id: b.dataset.paid, como: 'Bizum/transferencia' }); toast('¡Gracias! Lo comprobamos y te avisamos al activarlo.'); busy(b, false); b.textContent = 'Aviso enviado ✓'; b.disabled = true; } catch (e) { busy(b, false); toast(e.message, true); } });
   if ($('#gcb')) $('#gcb').onclick = async () => { try { await api('cCanjear', { codigo: $('#gc').value }); toast('¡Vale añadido!'); viewArea('monedero'); } catch (e) { toast(e.message, true); } };
   if ($('#of')) $('#of').onchange = async e => { try { await api('cSave', { ofertas: e.target.checked }); toast('Guardado'); } catch (x) { toast(x.message, true); } };
@@ -480,6 +517,7 @@ function route() {
   if (h.indexOf('fotos=') === 0) return viewPhotos(h.slice(6));
   if (h.indexOf('m=') === 0) return viewMagic(h.slice(2));
   if (h.indexOf('inv=') === 0) return viewInvite(h.slice(4));
+  if (h.indexOf('bono=') === 0) return viewBonoUsar(h.slice(5));
   if (h.indexOf('ver=') === 0) { S.preview = true; S.token = h.slice(4); S.me = null; history.replaceState(null, '', location.pathname + '#area'); return viewArea('inicio'); }
   if (h.indexOf('info=') === 0) return viewInfo(h.slice(5));
   if (h === 'presupuesto') return viewQuote();
